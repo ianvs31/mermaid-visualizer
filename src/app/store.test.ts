@@ -219,7 +219,14 @@ describe("editor store shortcuts state", () => {
         savedAt: "2026-03-21T10:00:00.000Z",
         code: "flowchart LR\nR1-->R2",
         codeDirty: false,
-        model: { version: 2 },
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [{ id: "N1", type: "process", label: "节点", x: 80, y: 120, width: "wide" }],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
       }),
     );
 

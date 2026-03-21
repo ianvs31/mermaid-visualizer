@@ -44,6 +44,72 @@ describe("draft persistence", () => {
     expect(loadDraftSnapshot()).toBeNull();
   });
 
+  it("returns null for snapshots with malformed node payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [{ id: "N1", type: "process", label: "节点", x: 80, y: 120, width: "wide" }],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
+  it("returns null for snapshots with malformed edge payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [],
+          edges: [{ id: "E1", from: "N1", to: 42 }],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
+  it("returns null for snapshots with malformed group payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [],
+          edges: [],
+          groups: [{ id: "G1", type: "swimlane", title: "分区", x: "oops", y: 40, width: 120, height: 80 }],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
   it("persists dirty draft state", () => {
     saveDraftSnapshot({
       code: "flowchart LR\nA-->B",

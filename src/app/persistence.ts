@@ -71,7 +71,13 @@ function isDiagramNodeLike(node: unknown): boolean {
     typeof node.type === "string" &&
     typeof node.label === "string" &&
     typeof node.x === "number" &&
-    typeof node.y === "number"
+    typeof node.y === "number" &&
+    isOptionalNumber(node.width) &&
+    isOptionalNumber(node.height) &&
+    isOptionalStringArray(node.classNames) &&
+    isOptionalRecord(node.style) &&
+    isOptionalRecord(node.appearance) &&
+    isOptionalString(node.parentGroupId)
   );
 }
 
@@ -80,7 +86,12 @@ function isDiagramEdgeLike(edge: unknown): boolean {
     isRecord(edge) &&
     typeof edge.id === "string" &&
     typeof edge.from === "string" &&
-    typeof edge.to === "string"
+    typeof edge.to === "string" &&
+    isOptionalString(edge.label) &&
+    isOptionalString(edge.sourceHandle) &&
+    isOptionalString(edge.targetHandle) &&
+    isOptionalStringArray(edge.classNames) &&
+    isOptionalRecord(edge.style)
   );
 }
 
@@ -90,8 +101,18 @@ function isDiagramGroupLike(group: unknown): boolean {
     typeof group.id === "string" &&
     typeof group.type === "string" &&
     typeof group.title === "string" &&
+    isOptionalString(group.direction) &&
+    isOptionalString(group.parentGroupId) &&
     Array.isArray(group.childNodeIds) &&
-    Array.isArray(group.childGroupIds)
+    group.childNodeIds.every((item) => typeof item === "string") &&
+    Array.isArray(group.childGroupIds) &&
+    group.childGroupIds.every((item) => typeof item === "string") &&
+    typeof group.x === "number" &&
+    typeof group.y === "number" &&
+    typeof group.width === "number" &&
+    typeof group.height === "number" &&
+    isOptionalRecord(group.laneMeta) &&
+    isOptionalBoolean(group.collapsed)
   );
 }
 
@@ -101,6 +122,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalNumber(value: unknown): value is number | undefined {
+  return value === undefined || typeof value === "number";
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === "boolean";
+}
+
+function isOptionalRecord(value: unknown): value is Record<string, unknown> | undefined {
+  return value === undefined || isRecord(value);
+}
+
+function isOptionalStringArray(value: unknown): value is string[] | undefined {
+  return value === undefined || isStringArray(value);
 }
 
 export function saveDraftSnapshot(snapshot: { code: string; codeDirty: boolean; model: DiagramModel }): void {

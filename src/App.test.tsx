@@ -20,11 +20,13 @@ const IMPORTABLE_DRAWIO_XML = `<mxGraphModel><root>
 const INVALID_COMPRESSED_XML = `<mxfile><diagram>Zm9vYmFy</diagram></mxfile>`;
 
 beforeEach(() => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
   localStorage.clear();
   useEditorStore.getState().loadSample();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   cleanup();
   localStorage.clear();
   useEditorStore.getState().loadSample();
@@ -312,6 +314,17 @@ describe("App", () => {
     });
 
     promptSpy.mockRestore();
+  }, 15000);
+
+  it("offers new, open, and download actions from the help/file controls", async () => {
+    render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    fireEvent.click(screen.getByRole("button", { name: "帮助与导出" }));
+
+    expect(screen.getByRole("button", { name: "新建图表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 Mermaid 文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
   }, 15000);
 
   it("keeps current diagram when pasted XML import fails", async () => {

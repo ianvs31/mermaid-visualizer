@@ -65,6 +65,8 @@ interface EditorState {
   syncCodeFromModel: () => void;
   applyCodeToModel: (options?: { fitView?: boolean; quiet?: boolean }) => Promise<void>;
   replaceModel: (model: DiagramModel, note?: string) => void;
+  newDocument: () => void;
+  openMermaidText: (text: string) => Promise<void>;
   beginInlineEdit: (session: InlineEditSession) => void;
   endInlineEdit: () => void;
   setSelection: (nodeIds: string[], edgeIds: string[], groupIds: string[]) => void;
@@ -301,6 +303,74 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       toastTick: Date.now(),
     });
     get().syncCodeFromModel();
+  },
+
+  newDocument: () => {
+    set((state) => ({
+      ...pushHistory(state),
+      model: createEmptyModel(),
+      code: `flowchart ${DEFAULT_DIRECTION}`,
+      codeDirty: false,
+      warnings: [],
+      inlineEditSession: undefined,
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
+      selectedGroupIds: [],
+      reconnectingEdgeId: undefined,
+      reconnectingEndpoint: undefined,
+      message: { tone: "success", text: "已新建图表" },
+      pendingRenderTick: Date.now(),
+      fitViewTick: Date.now(),
+      toastTick: Date.now(),
+    }));
+  },
+
+  openMermaidText: async (text) => {
+    const nextCode = text.trim();
+    if (!nextCode) {
+      set({
+        message: { tone: "error", text: "Mermaid 内容为空，打开已取消" },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    const parsed = parseMermaidFlowchartV2(nextCode);
+    if (parsed.errors.length > 0) {
+      set({
+        warnings: parsed.errors,
+        message: { tone: "error", text: parsed.errors[0] },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    const layouted = await applyElkLayout(parsed.model, {
+      direction: parsed.model.direction,
+      layerSpacing: 100,
+      nodeSpacing: 56,
+    });
+
+    set((state) => ({
+      ...pushHistory(state),
+      model: layouted,
+      code: nextCode,
+      codeDirty: false,
+      warnings: parsed.warnings,
+      inlineEditSession: undefined,
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
+      selectedGroupIds: [],
+      reconnectingEdgeId: undefined,
+      reconnectingEndpoint: undefined,
+      message: {
+        tone: parsed.warnings.length ? "info" : "success",
+        text: parsed.warnings.length ? parsed.warnings[0] : "已打开 Mermaid 文件",
+      },
+      pendingRenderTick: Date.now(),
+      fitViewTick: Date.now(),
+      toastTick: Date.now(),
+    }));
   },
 
   beginInlineEdit: (session) => {

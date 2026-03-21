@@ -19,7 +19,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import mermaid from "mermaid";
 import { deriveNodePaint, resolveNodeAppearance } from "./app/appearance";
 import { pickAutoHandle, validateConnection } from "./app/connection";
-import { copyExportToClipboard, type ExportFormat } from "./app/export";
+import { buildExportText, copyExportToClipboard, exportMimeTypeFor, type ExportFormat } from "./app/export";
+import { defaultFilenameFor, downloadTextFile } from "./app/file-io";
 import { ImportDrawioError, importDrawioXml } from "./app/import-drawio";
 import { getPaletteItem, type PaletteItemId } from "./app/palette";
 import { QUICK_CONNECT_EVENT, type QuickConnectEventDetail } from "./app/quick-connect-events";
@@ -94,6 +95,8 @@ function EditorApp() {
     applyCodeToModel,
     syncCodeFromModel,
     replaceModel,
+    newDocument,
+    openMermaidText,
     beginInlineEdit,
     endInlineEdit,
     undo,
@@ -1182,8 +1185,68 @@ function EditorApp() {
     [model, notify],
   );
 
+  const confirmReplaceDiagram = useCallback(() => {
+    const hasContent =
+      codeDirty ||
+      model.nodes.length > 0 ||
+      model.edges.length > 0 ||
+      model.groups.length > 0 ||
+      model.rawPassthroughStatements.length > 0;
+
+    if (!hasContent) {
+      return true;
+    }
+
+    return window.confirm("当前图表将被覆盖，是否继续？");
+  }, [codeDirty, model.edges.length, model.groups.length, model.nodes.length, model.rawPassthroughStatements.length]);
+
+  const handleDownloadExport = useCallback(
+    (format: ExportFormat) => {
+      try {
+        downloadTextFile(defaultFilenameFor(format), buildExportText(format, model), exportMimeTypeFor(format));
+        notify(
+          "success",
+          format === "drawio-xml"
+            ? "已下载 draw.io XML"
+            : format === "editor-json"
+              ? "已下载 JSON"
+              : "已下载 Mermaid",
+        );
+      } catch {
+        notify("error", "下载失败，请检查浏览器权限");
+      }
+    },
+    [model, notify],
+  );
+
+  const handleNewDocument = useCallback(() => {
+    if (!confirmReplaceDiagram()) {
+      return;
+    }
+    newDocument();
+  }, [confirmReplaceDiagram, newDocument]);
+
+  const handleOpenMermaidFile = useCallback(
+    async (file: File) => {
+      if (!confirmReplaceDiagram()) {
+        return;
+      }
+
+      try {
+        await openMermaidText(await file.text());
+      } catch {
+        notify("error", "读取 Mermaid 文件失败");
+      }
+    },
+    [confirmReplaceDiagram, notify, openMermaidText],
+  );
+
   const handleImportXmlText = useCallback(
     (xmlText: string) => {
+      if (!confirmReplaceDiagram()) {
+        return;
+      }
+
       const trimmed = xmlText.trim();
       if (!trimmed) {
         notify("error", "XML 内容为空，导入已取消");
@@ -1208,7 +1271,7 @@ function EditorApp() {
         notify("error", "导入 XML 失败，请检查内容格式");
       }
     },
-    [fitView, notify, replaceModel],
+    [confirmReplaceDiagram, fitView, notify, replaceModel],
   );
 
   const handleImportXmlFile = useCallback(
@@ -1463,7 +1526,10 @@ function EditorApp() {
             zoom={zoom}
             snapToGrid={interaction.snapToGrid}
             onToggleSnap={toggleSnap}
+            onNewDocument={handleNewDocument}
             onCopyExport={(format) => void handleCopyExport(format)}
+            onDownloadExport={handleDownloadExport}
+            onImportMermaidFile={(file) => void handleOpenMermaidFile(file)}
             onImportXmlText={handleImportXmlText}
             onImportXmlFile={(file) => void handleImportXmlFile(file)}
             onFitView={() => fitView({ padding: 0.2, duration: 220 })}

@@ -88,6 +88,16 @@ export function buildExportText(format: ExportFormat, model: DiagramModel): stri
   return buildDrawioXml(model);
 }
 
+export function exportMimeTypeFor(format: ExportFormat): string {
+  if (format === "editor-json") {
+    return "application/json;charset=utf-8";
+  }
+  if (format === "drawio-xml") {
+    return "application/xml;charset=utf-8";
+  }
+  return "text/markdown;charset=utf-8";
+}
+
 export async function copyExportToClipboard(format: ExportFormat, model: DiagramModel): Promise<void> {
   const text = buildExportText(format, model);
   if (navigator.clipboard?.writeText) {

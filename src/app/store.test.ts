@@ -58,6 +58,7 @@ function resetStore(model = createModel()): void {
     clipboard: undefined,
     past: [],
     future: [],
+    persistenceReady: true,
     toastTick: 0,
     pendingRenderTick: 0,
     fitViewTick: 0,

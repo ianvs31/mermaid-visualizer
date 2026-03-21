@@ -53,6 +53,7 @@ interface EditorState {
   past: HistorySnapshot[];
   future: HistorySnapshot[];
   zoom: number;
+  persistenceReady: boolean;
   toastTick: number;
   pendingRenderTick: number;
   fitViewTick: number;
@@ -149,6 +150,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   past: [],
   future: [],
   zoom: 1,
+  persistenceReady: false,
   toastTick: 0,
   pendingRenderTick: 0,
   fitViewTick: 0,
@@ -162,12 +164,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({
         code: restored.code,
         codeDirty: restored.codeDirty,
+        persistenceReady: true,
         warnings: [],
         fitViewTick: Date.now(),
       });
       return;
     }
     get().loadSample({ recordHistory: false });
+    set({ persistenceReady: true });
   },
 
   setZoom: (zoom) => set({ zoom }),

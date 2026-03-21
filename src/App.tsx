@@ -81,6 +81,7 @@ function EditorApp() {
     selectedGroupIds,
     inlineEditSession,
     zoom,
+    persistenceReady,
     toastTick,
     interaction,
     init,
@@ -123,7 +124,7 @@ function EditorApp() {
     pendingRenderTick,
     fitViewTick,
   } = useEditorStore();
-  useEditorPersistence(useMemo(() => ({ code, model, codeDirty }), [code, codeDirty, model]));
+  useEditorPersistence(useMemo(() => ({ code, model, codeDirty }), [code, codeDirty, model]), persistenceReady);
   const { previewSvg, previewError } = useMermaidPreview(code, pendingRenderTick);
   const [spacePressed, setSpacePressed] = useState(false);
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
@@ -324,6 +325,18 @@ function EditorApp() {
       y: rect.y - 18,
     };
   }, [canAssignSelectionToGroup, selectedGroup, viewport]);
+
+  const quickCreatePopoverAnchor = useMemo(() => {
+    if (!quickCreateSession || !workspaceRef.current) {
+      return null;
+    }
+
+    return clampQuickCreatePopoverAnchor(
+      quickCreateSession.anchorClientX,
+      quickCreateSession.anchorClientY,
+      workspaceRef.current.getBoundingClientRect(),
+    );
+  }, [quickCreateSession]);
 
   const inlineTargetRect = useMemo<InlineOverlayRect | null>(() => {
     if (!inlineEditSession) {
@@ -1563,10 +1576,10 @@ function EditorApp() {
           />
         ) : null}
 
-        {quickCreateSession ? (
+        {quickCreateSession && quickCreatePopoverAnchor ? (
           <QuickCreatePopover
-            x={quickCreateSession.anchorClientX}
-            y={quickCreateSession.anchorClientY}
+            x={quickCreatePopoverAnchor.x}
+            y={quickCreatePopoverAnchor.y}
             onSelect={completeQuickCreate}
             onClose={() => setQuickCreateSession(null)}
           />
@@ -1681,6 +1694,10 @@ interface QuickCreateSession {
   anchorClientX: number;
   anchorClientY: number;
 }
+
+const QUICK_CREATE_POPOVER_WIDTH = 244;
+const QUICK_CREATE_POPOVER_HEIGHT = 196;
+const QUICK_CREATE_POPOVER_MARGIN = 16;
 
 function calculateAlignmentSnap(
   draggedNode: DragNodeBox,
@@ -1948,6 +1965,28 @@ function roundCanvasValue(value: number): number {
 
 function stopUiEvent(event: SyntheticEvent) {
   event.stopPropagation();
+}
+
+function clampQuickCreatePopoverAnchor(anchorClientX: number, anchorClientY: number, workspaceRect: DOMRect) {
+  const localX = anchorClientX - workspaceRect.left;
+  const localY = anchorClientY - workspaceRect.top;
+  const minX = QUICK_CREATE_POPOVER_WIDTH / 2 + QUICK_CREATE_POPOVER_MARGIN;
+  const maxX = workspaceRect.width - QUICK_CREATE_POPOVER_WIDTH / 2 - QUICK_CREATE_POPOVER_MARGIN;
+  const minY = QUICK_CREATE_POPOVER_HEIGHT + QUICK_CREATE_POPOVER_MARGIN;
+  const maxY = workspaceRect.height - QUICK_CREATE_POPOVER_MARGIN;
+
+  return {
+    x: clampNumber(localX, minX, maxX),
+    y: clampNumber(localY, minY, maxY),
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (max < min) {
+    return min;
+  }
+
+  return Math.min(Math.max(value, min), max);
 }
 
 function isPrintableKey(event: KeyboardEvent): boolean {

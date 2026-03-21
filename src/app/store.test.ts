@@ -208,6 +208,25 @@ describe("editor store shortcuts state", () => {
 
     expect(useEditorStore.getState().code).toContain("R1-->R2");
     expect(useEditorStore.getState().message.text).toContain("恢复");
+    expect(useEditorStore.getState().fitViewTick).toBeGreaterThan(0);
+  });
+
+  it("falls back to the sample for parseable but invalid draft payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nR1-->R2",
+        codeDirty: false,
+        model: { version: 2 },
+      }),
+    );
+
+    useEditorStore.getState().init();
+
+    expect(useEditorStore.getState().code).toContain("提交申请");
+    expect(useEditorStore.getState().message.text).toContain("示例");
   });
 
   it("restores codeDirty from a dirty draft snapshot", () => {

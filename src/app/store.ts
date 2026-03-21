@@ -154,7 +154,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const restored = loadDraftSnapshot();
     if (restored) {
       get().replaceModel(restored.model, "已恢复本地草稿");
-      set({ code: restored.code, codeDirty: restored.codeDirty, warnings: [] });
+      set({
+        code: restored.code,
+        codeDirty: restored.codeDirty,
+        warnings: [],
+        fitViewTick: Date.now(),
+      });
       return;
     }
     get().loadSample();

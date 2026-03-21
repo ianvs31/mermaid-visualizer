@@ -70,6 +70,32 @@ describe("App", () => {
     expect(useEditorStore.getState().message.text).toContain("恢复");
   }, 15000);
 
+  it("persists edited drafts through the app-level persistence hook", async () => {
+    const { container } = render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    expect(targetNode).not.toBeNull();
+
+    fireEvent.doubleClick(targetNode!);
+
+    const input = await waitFor(() => {
+      const element = container.querySelector(".inline-text-overlay--editing") as HTMLInputElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+
+    fireEvent.change(input, { target: { value: "启动" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const draft = JSON.parse(localStorage.getItem("mv:draft") ?? "{}");
+      expect(draft.code).toContain("N1(启动)");
+      expect(draft.codeDirty).toBe(false);
+      expect(draft.version).toBe(1);
+    });
+  }, 15000);
+
   it("deletes a clicked node with Delete", async () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });

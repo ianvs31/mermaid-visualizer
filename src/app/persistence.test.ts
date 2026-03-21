@@ -29,6 +29,21 @@ describe("draft persistence", () => {
     expect(loadDraftSnapshot()).toBeNull();
   });
 
+  it("returns null for parseable snapshots without a complete model", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: { version: 2 },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
   it("persists dirty draft state", () => {
     saveDraftSnapshot({
       code: "flowchart LR\nA-->B",

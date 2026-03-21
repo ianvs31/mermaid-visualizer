@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { resolveNodeAppearance, stripPaintStyle } from "./appearance";
+import { buildExportText, exportMimeTypeFor, type ExportFormat } from "./export";
+import { defaultFilenameFor, downloadTextFile } from "./file-io";
 import { applyElkLayout } from "./layout";
 import { loadDraftSnapshot } from "./persistence";
 import { parseMermaidFlowchartV2 } from "./parser";
@@ -51,6 +53,7 @@ interface EditorState {
   past: HistorySnapshot[];
   future: HistorySnapshot[];
   zoom: number;
+  persistenceReady: boolean;
   toastTick: number;
   pendingRenderTick: number;
   fitViewTick: number;
@@ -64,7 +67,10 @@ interface EditorState {
   setViewportHudVisible: (visible: boolean) => void;
   syncCodeFromModel: () => void;
   applyCodeToModel: (options?: { fitView?: boolean; quiet?: boolean }) => Promise<void>;
-  replaceModel: (model: DiagramModel, note?: string) => void;
+  replaceModel: (model: DiagramModel, note?: string, options?: { recordHistory?: boolean }) => void;
+  newDocument: () => void;
+  openMermaidText: (text: string) => Promise<void>;
+  downloadExport: (format: ExportFormat) => void;
   beginInlineEdit: (session: InlineEditSession) => void;
   endInlineEdit: () => void;
   setSelection: (nodeIds: string[], edgeIds: string[], groupIds: string[]) => void;
@@ -123,7 +129,7 @@ interface EditorState {
   commitGroupTitle: (groupId: string, title: string) => void;
   updateEdgeLabel: (edgeId: string, label: string) => void;
   clear: () => void;
-  loadSample: () => void;
+  loadSample: (options?: { recordHistory?: boolean }) => void;
   autoLayout: () => Promise<void>;
 }
 
@@ -144,6 +150,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   past: [],
   future: [],
   zoom: 1,
+  persistenceReady: false,
   toastTick: 0,
   pendingRenderTick: 0,
   fitViewTick: 0,
@@ -153,11 +160,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().setUiPreset(uiPreset);
     const restored = loadDraftSnapshot();
     if (restored) {
-      get().replaceModel(restored.model, "已恢复本地草稿");
-      set({ code: restored.code, codeDirty: false, warnings: [] });
+      get().replaceModel(restored.model, "已恢复本地草稿", { recordHistory: false });
+      set({
+        code: restored.code,
+        codeDirty: restored.codeDirty,
+        persistenceReady: true,
+        warnings: [],
+        fitViewTick: Date.now(),
+      });
       return;
     }
-    get().loadSample();
+    get().loadSample({ recordHistory: false });
+    set({ persistenceReady: true });
   },
 
   setZoom: (zoom) => set({ zoom }),
@@ -169,7 +183,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
 
       return {
-        ...pushHistory(state),
+        ...(state.codeDirty ? {} : pushHistory(state)),
         code,
         codeDirty: true,
         message: { tone: "info", text: "正在同步 Mermaid 文本" },
@@ -277,11 +291,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  replaceModel: (model, note = "已导入模型") => {
+  replaceModel: (model, note = "已导入模型", options = {}) => {
     const normalized = structuredClone(model) as DiagramModel;
+    const recordHistory = options.recordHistory ?? true;
     normalizeChildren(normalized);
-    set({
-      ...pushHistory(get()),
+    set((state) => ({
+      ...(recordHistory ? pushHistory(state) : { past: [], future: [] }),
       model: normalized,
       warnings: [],
       inlineEditSession: undefined,
@@ -294,8 +309,101 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       message: { tone: "success", text: note },
       pendingRenderTick: Date.now(),
       toastTick: Date.now(),
-    });
+    }));
     get().syncCodeFromModel();
+  },
+
+  newDocument: () => {
+    set((state) => ({
+      ...pushHistory(state),
+      model: createEmptyModel(),
+      code: `flowchart ${DEFAULT_DIRECTION}`,
+      codeDirty: false,
+      warnings: [],
+      inlineEditSession: undefined,
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
+      selectedGroupIds: [],
+      reconnectingEdgeId: undefined,
+      reconnectingEndpoint: undefined,
+      message: { tone: "success", text: "已新建图表" },
+      pendingRenderTick: Date.now(),
+      fitViewTick: Date.now(),
+      toastTick: Date.now(),
+    }));
+  },
+
+  openMermaidText: async (text) => {
+    const nextCode = normalizeOpenedMermaidText(text);
+    if (!nextCode) {
+      set({
+        message: { tone: "error", text: "Mermaid 内容为空，打开已取消" },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    const parsed = parseMermaidFlowchartV2(nextCode);
+    if (parsed.errors.length > 0) {
+      set({
+        warnings: parsed.errors,
+        message: { tone: "error", text: parsed.errors[0] },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    const layouted = await applyElkLayout(parsed.model, {
+      direction: parsed.model.direction,
+      layerSpacing: 100,
+      nodeSpacing: 56,
+    });
+
+    set((state) => ({
+      ...pushHistory(state),
+      model: layouted,
+      code: nextCode,
+      codeDirty: false,
+      warnings: parsed.warnings,
+      inlineEditSession: undefined,
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
+      selectedGroupIds: [],
+      reconnectingEdgeId: undefined,
+      reconnectingEndpoint: undefined,
+      message: {
+        tone: parsed.warnings.length ? "info" : "success",
+        text: parsed.warnings.length ? parsed.warnings[0] : "已打开 Mermaid 文件",
+      },
+      pendingRenderTick: Date.now(),
+      fitViewTick: Date.now(),
+      toastTick: Date.now(),
+    }));
+  },
+
+  downloadExport: (format) => {
+    const model = get().model;
+
+    try {
+      downloadTextFile(defaultFilenameFor(format), buildExportText(format, model), exportMimeTypeFor(format));
+      set({
+        message: {
+          tone: "success",
+          text:
+            format === "drawio-xml"
+              ? "已下载 draw.io XML"
+              : format === "editor-json"
+                ? "已下载 JSON"
+                : "已下载 Mermaid",
+        },
+        toastTick: Date.now(),
+      });
+    } catch {
+      set({
+        message: { tone: "error", text: "下载失败，请检查浏览器权限" },
+        toastTick: Date.now(),
+      });
+    }
   },
 
   beginInlineEdit: (session) => {
@@ -978,10 +1086,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().syncCodeFromModel();
   },
 
-  loadSample: () => {
+  loadSample: (options = {}) => {
     const model = createSampleModel();
+    const recordHistory = options.recordHistory ?? true;
     set((state) => ({
-      ...pushHistory(state),
+      ...(recordHistory ? pushHistory(state) : { past: [], future: [] }),
       model,
       inlineEditSession: undefined,
       selectedNodeIds: [],
@@ -1044,6 +1153,15 @@ function pushHistory(
     past: [...state.past.slice(-(MAX_HISTORY - 1)), createHistorySnapshot(state)],
     future: [],
   };
+}
+
+function normalizeOpenedMermaidText(text: string): string {
+  const trimmed = text.trim();
+  const fencedMatch = trimmed.match(/^```mermaid\s*\r?\n([\s\S]*?)\r?\n```$/i);
+  if (fencedMatch) {
+    return fencedMatch[1].trim();
+  }
+  return trimmed;
 }
 
 function buildClipboardFromSelection(state: Pick<EditorState, "model" | "selectedNodeIds" | "selectedGroupIds">): ClipboardSnapshot | null {

@@ -8,6 +8,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:file-workflow": "vitest run src/app/file-io.test.ts src/App.test.tsx",
     "test:watch": "vitest"
   },
   "dependencies": {

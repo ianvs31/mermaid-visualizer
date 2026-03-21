@@ -1,7 +1,11 @@
-import ELK from "elkjs/lib/elk.bundled.js";
 import type { DiagramModel, Direction, LayoutOptions } from "./types";
 
-const elk = new ELK();
+let elkPromise: Promise<{ layout: (graph: any) => Promise<any> }> | null = null;
+
+async function loadElk() {
+  elkPromise ??= import("elkjs/lib/elk.bundled.js").then((module) => new module.default());
+  return elkPromise;
+}
 
 const DIRECTION_MAP: Record<Direction, string> = {
   LR: "RIGHT",
@@ -60,6 +64,7 @@ export async function applyElkLayout(
 
   let layouted: any;
   try {
+    const elk = await loadElk();
     layouted = await elk.layout(elkRoot);
   } catch {
     return model;

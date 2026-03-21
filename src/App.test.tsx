@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import mermaid from "mermaid";
 import App from "./App";
 import { useEditorStore } from "./app/store";
 
@@ -20,11 +21,13 @@ const IMPORTABLE_DRAWIO_XML = `<mxGraphModel><root>
 const INVALID_COMPRESSED_XML = `<mxfile><diagram>Zm9vYmFy</diagram></mxfile>`;
 
 beforeEach(() => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
   localStorage.clear();
   useEditorStore.getState().loadSample();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   cleanup();
   localStorage.clear();
   useEditorStore.getState().loadSample();
@@ -39,7 +42,7 @@ describe("App", () => {
     expect(matched.length).toBeGreaterThan(0);
   }, 15000);
 
-  it("restores a saved draft on startup", async () => {
+  it("boots with a saved draft present", async () => {
     const restoredModel = {
       version: 2 as const,
       direction: "LR" as const,
@@ -58,6 +61,7 @@ describe("App", () => {
         version: 1,
         savedAt: "2026-03-21T10:00:00.000Z",
         code: "flowchart LR\nR1-->R2",
+        codeDirty: false,
         model: restoredModel,
       }),
     );
@@ -65,7 +69,77 @@ describe("App", () => {
     render(<App />);
 
     await screen.findAllByText("恢复开始", {}, { timeout: 12000 });
+    expect(useEditorStore.getState().code).toContain("R1-->R2");
     expect(useEditorStore.getState().message.text).toContain("恢复");
+  }, 15000);
+
+  it("persists edited drafts through the app-level persistence hook", async () => {
+    const { container } = render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    expect(targetNode).not.toBeNull();
+
+    fireEvent.doubleClick(targetNode!);
+
+    const input = await waitFor(() => {
+      const element = container.querySelector(".inline-text-overlay--editing") as HTMLInputElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+
+    fireEvent.change(input, { target: { value: "启动" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const draft = JSON.parse(localStorage.getItem("mv:draft") ?? "{}");
+      expect(draft.code).toContain("N1(启动)");
+      expect(draft.codeDirty).toBe(false);
+      expect(draft.version).toBe(1);
+    });
+  }, 15000);
+
+  it("debounces preview rendering to the latest code edit", async () => {
+    const renderSpy = vi.spyOn(mermaid, "render").mockResolvedValue({ svg: "<svg></svg>" } as Awaited<
+      ReturnType<typeof mermaid.render>
+    >);
+
+    try {
+      const { container } = render(<App />);
+      await screen.findAllByText("开始", {}, { timeout: 12000 });
+      await waitFor(() => {
+        expect(renderSpy).toHaveBeenCalled();
+      });
+
+      renderSpy.mockClear();
+      const textbox = container.querySelector("textarea.code-box");
+      expect(textbox).not.toBeNull();
+      vi.useFakeTimers();
+
+      fireEvent.change(textbox!, { target: { value: "flowchart LR\nA-->B" } });
+      fireEvent.change(textbox!, { target: { value: "flowchart LR\nA-->C" } });
+
+      expect(renderSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(259);
+      });
+
+      expect(renderSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(renderSpy).toHaveBeenCalledTimes(1);
+        expect(renderSpy).toHaveBeenLastCalledWith(expect.any(String), "flowchart LR\nA-->C");
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   }, 15000);
 
   it("deletes a clicked node with Delete", async () => {
@@ -167,6 +241,34 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(useEditorStore.getState().code).toContain("subgraph G1[新泳道]");
+    });
+  }, 15000);
+
+  it("collapses a swimlane from the group header control", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "折叠 业务侧" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.groups.find((group) => group.id === "G1")?.collapsed).toBe(true);
+    });
+  }, 15000);
+
+  it("moves selected nodes into the selected group from the contextual action", async () => {
+    const { container } = render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const targetNode = container.querySelector('.react-flow__node[data-id="N4"]');
+    const targetGroup = container.querySelector('.react-flow__node[data-id="G1"]');
+    expect(targetNode).not.toBeNull();
+    expect(targetGroup).not.toBeNull();
+
+    fireEvent.click(targetNode!);
+    fireEvent.click(targetGroup!, { shiftKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "移入当前分区" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.nodes.find((node) => node.id === "N4")?.parentGroupId).toBe("G1");
     });
   }, 15000);
 
@@ -284,6 +386,44 @@ describe("App", () => {
     });
 
     promptSpy.mockRestore();
+  }, 15000);
+
+  it("offers new, open, and download actions from the help/file controls", async () => {
+    render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    fireEvent.click(screen.getByRole("button", { name: "帮助与导出" }));
+
+    expect(screen.getByRole("button", { name: "新建图表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 Mermaid 文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 draw.io 文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载 Mermaid" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载 draw.io XML" })).toBeInTheDocument();
+  }, 15000);
+
+  it("honors the overwrite confirmation guard when creating a new document", async () => {
+    render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const before = useEditorStore.getState().code;
+    const confirmSpy = vi.spyOn(window, "confirm");
+    confirmSpy.mockReturnValueOnce(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "帮助与导出" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建图表" }));
+
+    expect(useEditorStore.getState().code).toBe(before);
+    expect(useEditorStore.getState().model.nodes.length).toBeGreaterThan(0);
+
+    confirmSpy.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole("button", { name: "新建图表" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().code).toBe("flowchart LR");
+      expect(useEditorStore.getState().model.nodes).toHaveLength(0);
+      expect(useEditorStore.getState().message.text).toContain("新建");
+    });
   }, 15000);
 
   it("keeps current diagram when pasted XML import fails", async () => {

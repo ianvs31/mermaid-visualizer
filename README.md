@@ -67,16 +67,25 @@
 ### 自动布局与互操作
 
 - ELK 自动布局
+- 浏览器文件工作流：
+  - 新建图表
+  - 打开 Mermaid 文件
+  - 打开 draw.io 文件
+  - 下载 Mermaid / JSON / draw.io XML
 - draw.io / diagrams.net XML 导入：
   - 支持 `mxGraphModel`
   - 支持 `mxfile`
   - 支持压缩 `diagram` payload
 - 导出能力：
+  - 下载 Mermaid
+  - 下载 JSON bundle
+  - 下载 draw.io XML
   - 复制 draw.io XML
   - 复制编辑器 JSON bundle
   - 复制 Markdown Mermaid 代码块
-
-注意：当前导出是“复制到剪贴板”，不是直接下载文件。
+- 本地草稿持久化：
+  - 默认保存到 `localStorage`
+  - 刷新页面后优先恢复最近一次草稿
 
 ## 快速开始
 
@@ -93,7 +102,14 @@ npm run dev
 npm run dev
 npm run build
 npm run test
+npm run test:e2e
 npm run test:watch
+```
+
+首次运行 Playwright 时，如果浏览器尚未安装，先执行：
+
+```bash
+npx playwright install
 ```
 
 ## 使用方式
@@ -151,7 +167,9 @@ npm run test:watch
 - `legacy/`
   早期原型版本
 - `e2e/`
-  Playwright 端到端测试草稿
+  Playwright 端到端回归用例（工具条创建、快速连接、草稿恢复、文件工作流）
+- `.github/workflows/ci.yml`
+  持续集成：Vitest、构建、Playwright
 
 ## 自动化测试
 
@@ -163,8 +181,19 @@ npm run test:watch
 - 工具条与 inline rename
 - 关键节点渲染与选择样式
 - App 级别的基础交互流程
+- Playwright 端到端回归：
+  - 工具条创建与泳道模式
+  - FigJam 风格快速连接
+  - 本地草稿刷新恢复
+  - 文件下载与 Mermaid 文件重新打开
 
-当前正式纳入脚本的是 `Vitest` 测试。`e2e/` 目录中已经有 Playwright 规格草稿，但还没有整理成稳定、持续可运行的正式测试入口。
+推荐回归顺序：
+
+```bash
+npm run test
+npm run build
+npm run test:e2e
+```
 
 ## 已知限制
 
@@ -172,32 +201,28 @@ npm run test:watch
 - draw.io 导入目前偏“结构导入”：
   - 会尽量保留节点、连线、方向和泳道几何信息
   - 原始样式只做有限映射，不是完整 fidelity round-trip
-- 当前导出主要是复制文本，不包含本地文件保存体验。
-- 当前没有持久化存储；应用初始化时会加载示例图，刷新页面后不会自动恢复上次编辑内容。
+- 当前仍然缺少“保存到本地原文件”的正式保存动作；文件工作流以打开、新建、下载为主。
+- 本地草稿基于 `localStorage`，适合单浏览器恢复，不包含跨设备同步、版本历史或冲突处理。
 - 实现集中度较高，`src/App.tsx`、`src/app/store.ts`、`src/styles/app.css` 体量都已经偏大，后续维护成本会上升。
-- `e2e` 脚本与现有 UI 仍有脱节，说明端到端回归体系还没有完全跟上最新交互。
-- Mermaid 和 ELK 都是较重依赖，大图场景下的输入解析、预览渲染和自动布局还会继续成为性能瓶颈。
+- Mermaid 和 ELK 已经做了延迟加载，但相关 chunk 仍然偏大，大图场景下的解析、预览渲染和自动布局仍会继续成为性能瓶颈。
 
 ## 下一阶段建议
 
 ### 1. 稳定性优先
 
-- 增加本地持久化和恢复机制，避免刷新即丢稿
 - 为 draw.io 导入、Mermaid 解析失败、剪贴板失败补全更细粒度的错误提示
-- 整理并恢复 Playwright 端到端测试，把核心交互纳入 CI
-- 把当前超大文件拆分，降低后续修改的回归风险
+- 补一个真正的“保存到文件”动作，而不只是下载导出
+- 继续拆分 `src/App.tsx` / `src/app/store.ts` / `src/styles/app.css`
 
 ### 2. 性能优化
 
-- 减少每次编辑时的全量 `structuredClone`、全量序列化和全量预览渲染
-- 对 Mermaid 预览和代码同步做更精细的 debounce / 调度
-- 懒加载 Mermaid 与 ELK，缩小首屏负担
+- 继续减少高频编辑路径里的全量 `structuredClone`、全量序列化和布局触发
+- 进一步拆分 Mermaid 相关 chunk，降低当前延迟加载包体
 - 为大图场景引入更细粒度的 store 订阅和渲染边界
 
 ### 3. 功能扩展
 
-- 完整文件工作流：新建、打开、保存、下载
-- 补齐 subgraph / collapse / selection-to-group 等已有模型能力的 UI 暴露
+- 补齐 draw.io 导出后的再导入保真度和样式映射
 - 扩展更多 Mermaid flowchart 语法覆盖范围
 - 提升 draw.io 双向互操作的一致性
 - 增加分享、快照、只读预览等协作型能力
@@ -212,4 +237,4 @@ npm run test:watch
 - Mermaid
 - ELK (`elkjs`)
 - Vitest + Testing Library
-- Playwright（草稿中）
+- Playwright

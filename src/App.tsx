@@ -15,8 +15,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import mermaid from "mermaid";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent } from "react";
 import { deriveNodePaint, resolveNodeAppearance } from "./app/appearance";
 import { pickAutoHandle, validateConnection } from "./app/connection";
 import { copyExportToClipboard, type ExportFormat } from "./app/export";
@@ -24,7 +23,9 @@ import { ImportDrawioError, importDrawioXml } from "./app/import-drawio";
 import { getPaletteItem, type PaletteItemId } from "./app/palette";
 import { QUICK_CONNECT_EVENT, type QuickConnectEventDetail } from "./app/quick-connect-events";
 import { applyFlowNodePosition, modelToFlowElements } from "./app/reactflow-mapper";
+import { useAutoApplyCode } from "./hooks/useAutoApplyCode";
 import { useEditorPersistence } from "./hooks/useEditorPersistence";
+import { useMermaidPreview } from "./hooks/useMermaidPreview";
 import { summarizeNodeAppearances } from "./app/selection-appearance";
 import {
   isApplyCodeShortcut,
@@ -61,8 +62,6 @@ import { ViewportHud } from "./components/ViewportHud";
 import { ViewportControls } from "./components/ViewportControls";
 import "./styles/app.css";
 
-mermaid.initialize({ startOnLoad: false, securityLevel: "loose", theme: "default" });
-
 const NODE_TYPES = {
   flowNode: FlowNode,
   groupNode: GroupNode,
@@ -82,6 +81,7 @@ function EditorApp() {
     selectedGroupIds,
     inlineEditSession,
     zoom,
+    persistenceReady,
     toastTick,
     interaction,
     init,
@@ -94,6 +94,9 @@ function EditorApp() {
     applyCodeToModel,
     syncCodeFromModel,
     replaceModel,
+    newDocument,
+    openMermaidText,
+    downloadExport,
     beginInlineEdit,
     endInlineEdit,
     undo,
@@ -103,6 +106,8 @@ function EditorApp() {
     pasteClipboard,
     addNode,
     addSwimlane,
+    assignSelectionToGroup,
+    toggleGroupCollapse,
     updateNodeGeometry,
     updateNodeParentGroup,
     updateGroupGeometry,
@@ -119,10 +124,8 @@ function EditorApp() {
     pendingRenderTick,
     fitViewTick,
   } = useEditorStore();
-  useEditorPersistence(useMemo(() => ({ code, model, codeDirty }), [code, codeDirty, model]));
-
-  const [previewSvg, setPreviewSvg] = useState("");
-  const [previewError, setPreviewError] = useState("");
+  useEditorPersistence(useMemo(() => ({ code, model, codeDirty }), [code, codeDirty, model]), persistenceReady);
+  const { previewSvg, previewError } = useMermaidPreview(code, pendingRenderTick);
   const [spacePressed, setSpacePressed] = useState(false);
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
@@ -144,7 +147,6 @@ function EditorApp() {
   const dragSnapRef = useRef<{ x: number | null; y: number | null }>({ x: null, y: null });
   const paletteDragRef = useRef<PaletteDragSession | null>(null);
   const suppressPaletteClickRef = useRef<PaletteItemId | null>(null);
-  const disposedRef = useRef(false);
   const deferredSelectionFrameRef = useRef<number | null>(null);
 
   const { fitView, zoomIn, zoomOut, setViewport, screenToFlowPosition } = useReactFlow();
@@ -216,6 +218,7 @@ function EditorApp() {
           updateGroupGeometry(groupId, current.x, current.y, width, height, true);
           syncCodeFromModel();
         },
+        onToggleGroupCollapse: toggleGroupCollapse,
       }),
     [
       connectingNodeId,
@@ -225,6 +228,7 @@ function EditorApp() {
       selectedGroupIds,
       selectedNodeIds,
       syncCodeFromModel,
+      toggleGroupCollapse,
       updateGroupGeometry,
     ],
   );
@@ -243,6 +247,14 @@ function EditorApp() {
     () => model.nodes.filter((node) => selectedNodeIds.includes(node.id)),
     [model.nodes, selectedNodeIds],
   );
+
+  const selectedGroup = useMemo(() => {
+    if (selectedGroupIds.length !== 1) {
+      return null;
+    }
+
+    return model.groups.find((group) => group.id === selectedGroupIds[0]) ?? null;
+  }, [model.groups, selectedGroupIds]);
 
   const selectedNodeAppearance = useMemo<NodeAppearance | null>(
     () => (selectedNode ? resolveNodeAppearance(selectedNode) : null),
@@ -290,6 +302,41 @@ function EditorApp() {
     }
     return null;
   }, [multiNodeBounds, selectedNode, selectedNodePaint, selectionAppearanceSummary, viewport]);
+
+  const canAssignSelectionToGroup =
+    effectiveToolMode === "select" &&
+    !!selectedGroup &&
+    selectedNodeIds.length > 0 &&
+    selectedEdgeIds.length === 0 &&
+    !inlineEditSession &&
+    !edgeEditor &&
+    !quickCreateSession &&
+    !laneDrawArmed &&
+    !laneDraft;
+
+  const groupActionAnchor = useMemo(() => {
+    if (!canAssignSelectionToGroup || !selectedGroup) {
+      return null;
+    }
+
+    const rect = toScreenRect(selectedGroup, viewport);
+    return {
+      x: rect.x + rect.width / 2,
+      y: rect.y - 18,
+    };
+  }, [canAssignSelectionToGroup, selectedGroup, viewport]);
+
+  const quickCreatePopoverAnchor = useMemo(() => {
+    if (!quickCreateSession || !workspaceRef.current) {
+      return null;
+    }
+
+    return clampQuickCreatePopoverAnchor(
+      quickCreateSession.anchorClientX,
+      quickCreateSession.anchorClientY,
+      workspaceRef.current.getBoundingClientRect(),
+    );
+  }, [quickCreateSession]);
 
   const inlineTargetRect = useMemo<InlineOverlayRect | null>(() => {
     if (!inlineEditSession) {
@@ -341,38 +388,12 @@ function EditorApp() {
     viewport,
   ]);
 
-  const renderPreview = useCallback(async () => {
-    const trimmed = code.trim();
-    if (!trimmed) {
-      if (!disposedRef.current) {
-        setPreviewSvg("");
-        setPreviewError("");
-      }
-      return;
-    }
-
-    try {
-      const id = `preview-${Date.now()}`;
-      const { svg } = await mermaid.render(id, trimmed);
-      if (!disposedRef.current) {
-        setPreviewSvg(svg);
-        setPreviewError("");
-      }
-    } catch (error) {
-      if (!disposedRef.current) {
-        setPreviewError(String(error));
-      }
-    }
-  }, [code]);
-
   useEffect(() => {
     init();
   }, [init]);
 
   useEffect(() => {
-    disposedRef.current = false;
     return () => {
-      disposedRef.current = true;
       if (deferredSelectionFrameRef.current !== null) {
         window.cancelAnimationFrame(deferredSelectionFrameRef.current);
       }
@@ -393,21 +414,7 @@ function EditorApp() {
     [setSelection],
   );
 
-  useEffect(() => {
-    renderPreview();
-  }, [renderPreview, pendingRenderTick]);
-
-  useEffect(() => {
-    if (!codeDirty) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void applyCodeToModel({ quiet: true });
-    }, 260);
-
-    return () => window.clearTimeout(timer);
-  }, [applyCodeToModel, codeDirty, code]);
+  useAutoApplyCode(code, codeDirty, applyCodeToModel);
 
   useEffect(() => {
     if (!fitViewTick || fitViewTick === handledFitViewTickRef.current || elements.nodes.length === 0) {
@@ -1182,8 +1189,49 @@ function EditorApp() {
     [model, notify],
   );
 
+  const confirmReplaceDiagram = useCallback(() => {
+    const hasContent =
+      codeDirty ||
+      model.nodes.length > 0 ||
+      model.edges.length > 0 ||
+      model.groups.length > 0 ||
+      model.rawPassthroughStatements.length > 0;
+
+    if (!hasContent) {
+      return true;
+    }
+
+    return window.confirm("当前图表将被覆盖，是否继续？");
+  }, [codeDirty, model.edges.length, model.groups.length, model.nodes.length, model.rawPassthroughStatements.length]);
+
+  const handleNewDocument = useCallback(() => {
+    if (!confirmReplaceDiagram()) {
+      return;
+    }
+    newDocument();
+  }, [confirmReplaceDiagram, newDocument]);
+
+  const handleOpenMermaidFile = useCallback(
+    async (file: File) => {
+      if (!confirmReplaceDiagram()) {
+        return;
+      }
+
+      try {
+        await openMermaidText(await file.text());
+      } catch {
+        notify("error", "读取 Mermaid 文件失败");
+      }
+    },
+    [confirmReplaceDiagram, notify, openMermaidText],
+  );
+
   const handleImportXmlText = useCallback(
     (xmlText: string) => {
+      if (!confirmReplaceDiagram()) {
+        return;
+      }
+
       const trimmed = xmlText.trim();
       if (!trimmed) {
         notify("error", "XML 内容为空，导入已取消");
@@ -1208,7 +1256,7 @@ function EditorApp() {
         notify("error", "导入 XML 失败，请检查内容格式");
       }
     },
-    [fitView, notify, replaceModel],
+    [confirmReplaceDiagram, fitView, notify, replaceModel],
   );
 
   const handleImportXmlFile = useCallback(
@@ -1384,6 +1432,32 @@ function EditorApp() {
           />
         ) : null}
 
+        {!isClassicPreset && groupActionAnchor ? (
+          <div
+            className="figjam-toolbar figjam-toolbar--context"
+            style={{ left: groupActionAnchor.x, top: groupActionAnchor.y }}
+            role="toolbar"
+            aria-label="分区操作"
+            onPointerDown={stopUiEvent}
+            onMouseDown={stopUiEvent}
+            onClick={stopUiEvent}
+          >
+            <button
+              type="button"
+              className="context-trigger"
+              aria-label="移入当前分区"
+              onPointerDown={stopUiEvent}
+              onMouseDown={stopUiEvent}
+              onClick={(event) => {
+                stopUiEvent(event);
+                assignSelectionToGroup();
+              }}
+            >
+              <span className="context-trigger__label">移入当前分区</span>
+            </button>
+          </div>
+        ) : null}
+
         <InlineTextOverlay
           session={inlineEditSession}
           targetRect={inlineTargetRect}
@@ -1463,7 +1537,10 @@ function EditorApp() {
             zoom={zoom}
             snapToGrid={interaction.snapToGrid}
             onToggleSnap={toggleSnap}
+            onNewDocument={handleNewDocument}
             onCopyExport={(format) => void handleCopyExport(format)}
+            onDownloadExport={downloadExport}
+            onImportMermaidFile={(file) => void handleOpenMermaidFile(file)}
             onImportXmlText={handleImportXmlText}
             onImportXmlFile={(file) => void handleImportXmlFile(file)}
             onFitView={() => fitView({ padding: 0.2, duration: 220 })}
@@ -1499,10 +1576,10 @@ function EditorApp() {
           />
         ) : null}
 
-        {quickCreateSession ? (
+        {quickCreateSession && quickCreatePopoverAnchor ? (
           <QuickCreatePopover
-            x={quickCreateSession.anchorClientX}
-            y={quickCreateSession.anchorClientY}
+            x={quickCreatePopoverAnchor.x}
+            y={quickCreatePopoverAnchor.y}
             onSelect={completeQuickCreate}
             onClose={() => setQuickCreateSession(null)}
           />
@@ -1617,6 +1694,10 @@ interface QuickCreateSession {
   anchorClientX: number;
   anchorClientY: number;
 }
+
+const QUICK_CREATE_POPOVER_WIDTH = 244;
+const QUICK_CREATE_POPOVER_HEIGHT = 196;
+const QUICK_CREATE_POPOVER_MARGIN = 16;
 
 function calculateAlignmentSnap(
   draggedNode: DragNodeBox,
@@ -1880,6 +1961,32 @@ function toLocalDraftStyle(draft: LaneDraft, rect: DOMRect): CSSProperties {
 
 function roundCanvasValue(value: number): number {
   return Math.round(value);
+}
+
+function stopUiEvent(event: SyntheticEvent) {
+  event.stopPropagation();
+}
+
+function clampQuickCreatePopoverAnchor(anchorClientX: number, anchorClientY: number, workspaceRect: DOMRect) {
+  const localX = anchorClientX - workspaceRect.left;
+  const localY = anchorClientY - workspaceRect.top;
+  const minX = QUICK_CREATE_POPOVER_WIDTH / 2 + QUICK_CREATE_POPOVER_MARGIN;
+  const maxX = workspaceRect.width - QUICK_CREATE_POPOVER_WIDTH / 2 - QUICK_CREATE_POPOVER_MARGIN;
+  const minY = QUICK_CREATE_POPOVER_HEIGHT + QUICK_CREATE_POPOVER_MARGIN;
+  const maxY = workspaceRect.height - QUICK_CREATE_POPOVER_MARGIN;
+
+  return {
+    x: clampNumber(localX, minX, maxX),
+    y: clampNumber(localY, minY, maxY),
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (max < min) {
+    return min;
+  }
+
+  return Math.min(Math.max(value, min), max);
 }
 
 function isPrintableKey(event: KeyboardEvent): boolean {

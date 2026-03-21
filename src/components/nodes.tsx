@@ -19,6 +19,7 @@ interface GroupNodeData {
   collapsed?: boolean;
   childCount: number;
   onResizeEnd?: (groupId: string, width: number, height: number) => void;
+  onToggleCollapse?: (groupId: string) => void;
 }
 
 export function FlowNode({ data, selected }: NodeProps) {
@@ -63,6 +64,19 @@ export function GroupNode({ id, data, selected }: NodeProps) {
       />
       <div className="diagram-group__header">
         <span>{typed.title}</span>
+        <button
+          type="button"
+          className="diagram-group__toggle"
+          aria-label={`${typed.collapsed ? "展开" : "折叠"} ${typed.title}`}
+          onPointerDown={stopEvent}
+          onMouseDown={stopEvent}
+          onClick={(event) => {
+            stopEvent(event);
+            typed.onToggleCollapse?.(id);
+          }}
+        >
+          {typed.collapsed ? "展开" : "折叠"}
+        </button>
         <span className="diagram-group__meta">{typed.groupType === "swimlane" ? "泳道" : "subgraph"}</span>
       </div>
       {typed.collapsed ? <div className="diagram-group__collapsed">已折叠，包含 {typed.childCount} 个子项</div> : null}

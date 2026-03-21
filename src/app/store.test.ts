@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as fileIo from "./file-io";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 import { useEditorStore } from "./store";
 import type { DiagramModel } from "./types";
@@ -57,6 +58,7 @@ function resetStore(model = createModel()): void {
     clipboard: undefined,
     past: [],
     future: [],
+    persistenceReady: true,
     toastTick: 0,
     pendingRenderTick: 0,
     fitViewTick: 0,
@@ -145,6 +147,26 @@ describe("editor store shortcuts state", () => {
     expect(next.code).toMatch(/subgraph G1\[业务侧\][\s\S]*end[\s\S]*N1\(开始\)/);
   });
 
+  it("toggles collapse state for a selected group", () => {
+    resetStore(createGroupedModel());
+
+    useEditorStore.getState().toggleGroupCollapse("G1");
+
+    expect(useEditorStore.getState().model.groups[0].collapsed).toBe(true);
+  });
+
+  it("moves selected nodes into the selected group", () => {
+    resetStore(createGroupedModel());
+    const store = useEditorStore.getState();
+
+    store.setSelection(["N1"], [], ["G1"]);
+    store.assignSelectionToGroup();
+
+    const next = useEditorStore.getState();
+    expect(next.model.nodes.find((node) => node.id === "N1")?.parentGroupId).toBe("G1");
+    expect(next.model.groups[0].childNodeIds).toEqual(["N1"]);
+  });
+
   it("creates a swimlane from explicit drag bounds", () => {
     resetStore(createModel());
     const store = useEditorStore.getState();
@@ -180,6 +202,30 @@ describe("editor store shortcuts state", () => {
     expect(next.code).toContain("%% editor:appearance N2 fillMode=transparent fillColor=#eb5c33 strokeColor=#1f2937 strokePattern=dashed radius=24 width=2");
   });
 
+  it("downloads Mermaid text through the explicit action and reopens it successfully", async () => {
+    resetStore(createModel());
+    let downloadedText = "";
+    const downloadSpy = vi.spyOn(fileIo, "downloadTextFile").mockImplementation((filename, text, type) => {
+      expect(filename).toBe("diagram.md");
+      expect(type).toBe("text/markdown;charset=utf-8");
+      downloadedText = text;
+    });
+
+    useEditorStore.getState().downloadExport("markdown-mermaid");
+
+    expect(downloadSpy).toHaveBeenCalledTimes(1);
+    expect(downloadedText).toContain("```mermaid");
+
+    await useEditorStore.getState().openMermaidText(downloadedText);
+
+    const next = useEditorStore.getState();
+    expect(next.message.text).toContain("已打开 Mermaid 文件");
+    expect(next.code).toContain("flowchart LR");
+    expect(next.code).not.toContain("```");
+    expect(next.model.nodes.map((node) => node.id)).toEqual(["N1", "N2"]);
+    expect(next.model.rawPassthroughStatements).toEqual([]);
+  });
+
   it("prefers restoring a saved draft over loading the sample", () => {
     const restoredModel: DiagramModel = {
       version: 2,
@@ -199,6 +245,7 @@ describe("editor store shortcuts state", () => {
         version: 1,
         savedAt: "2026-03-21T10:00:00.000Z",
         code: "flowchart LR\nR1-->R2",
+        codeDirty: false,
         model: restoredModel,
       }),
     );
@@ -207,5 +254,106 @@ describe("editor store shortcuts state", () => {
 
     expect(useEditorStore.getState().code).toContain("R1-->R2");
     expect(useEditorStore.getState().message.text).toContain("恢复");
+    expect(useEditorStore.getState().fitViewTick).toBeGreaterThan(0);
+  });
+
+  it("falls back to the sample for parseable but style/appearance-corrupted draft payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nR1-->R2",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [
+            {
+              id: "R1",
+              type: "process",
+              label: "恢复处理",
+              x: 80,
+              y: 120,
+              style: { fill: "#ffffff", width: 2 },
+            },
+            {
+              id: "R2",
+              type: "process",
+              label: "恢复处理",
+              x: 280,
+              y: 120,
+              appearance: { fillMode: "solid", fillColor: "#fff", strokeColor: "#1f2937", strokePattern: "solid", strokeWidth: 2 },
+            },
+          ],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    useEditorStore.getState().init();
+
+    expect(useEditorStore.getState().code).toContain("提交申请");
+    expect(useEditorStore.getState().message.text).toContain("示例");
+  });
+
+  it("restores codeDirty from a dirty draft snapshot", () => {
+    const restoredModel: DiagramModel = {
+      version: 2,
+      direction: "LR",
+      rawPassthroughStatements: [],
+      groups: [],
+      nodes: [
+        { id: "R1", type: "start", label: "恢复开始", x: 80, y: 120, width: 130, height: 66 },
+        { id: "R2", type: "process", label: "恢复处理", x: 280, y: 120, width: 148, height: 72 },
+      ],
+      edges: [{ id: "RE1", from: "R1", to: "R2", label: "" }],
+    };
+
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nR1-->R2",
+        codeDirty: true,
+        model: restoredModel,
+      }),
+    );
+
+    useEditorStore.getState().init();
+
+    expect(useEditorStore.getState().codeDirty).toBe(true);
+  });
+
+  it("does not seed undo history when init boots the sample document", () => {
+    resetStore({
+      version: 2,
+      direction: "LR",
+      rawPassthroughStatements: [],
+      groups: [],
+      nodes: [],
+      edges: [],
+    });
+
+    useEditorStore.getState().init();
+
+    expect(useEditorStore.getState().past).toHaveLength(0);
+  });
+
+  it("coalesces consecutive code edits into a single undo snapshot", () => {
+    resetStore(createModel());
+    const originalCode = useEditorStore.getState().code;
+
+    useEditorStore.getState().setCode("flowchart LR\nA-->B");
+    useEditorStore.getState().setCode("flowchart LR\nA-->C");
+
+    expect(useEditorStore.getState().past).toHaveLength(1);
+
+    useEditorStore.getState().undo();
+
+    expect(useEditorStore.getState().code).toBe(originalCode);
   });
 });

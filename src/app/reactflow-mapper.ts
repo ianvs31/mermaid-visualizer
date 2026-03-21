@@ -20,6 +20,7 @@ export interface FlowMapOptions {
   selectedGroupIds?: string[];
   connectingNodeId?: string | null;
   onGroupResizeEnd?: (groupId: string, width: number, height: number) => void;
+  onToggleGroupCollapse?: (groupId: string) => void;
 }
 
 export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions = {}): FlowElementSet {
@@ -59,6 +60,7 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
         collapsed: !!group.collapsed,
         childCount: group.childNodeIds.length + group.childGroupIds.length,
         onResizeEnd: options.onGroupResizeEnd,
+        onToggleCollapse: options.onToggleGroupCollapse,
       },
       position: toRelativePosition(group.x, group.y, parent),
       parentId: parent?.id,

@@ -1,33 +1,18 @@
 import { expect, test } from "@playwright/test";
+import { bootCleanEditor } from "./helpers";
 
 test.describe("FigJam interaction preset", () => {
-  test("supports toolbar mode switching and basic connect flow", async ({ page }) => {
-    await page.goto("/");
+  test("supports quick-create connection flow from the selected node", async ({ page }) => {
+    await bootCleanEditor(page);
 
-    await page.getByRole("button", { name: "连线" }).click();
-    await expect(page.getByRole("button", { name: "连线" })).toHaveClass(/is-active/);
+    await page.getByRole("button", { name: "起止" }).click();
+    await page.getByRole("button", { name: "快速连接 right" }).click();
+    await page.getByRole("dialog", { name: "快速创建节点" }).getByRole("button", { name: "步骤" }).click();
 
-    const sourceNode = page.locator('.react-flow__node[data-id="N1"]').first();
-    const targetNode = page.locator('.react-flow__node[data-id="N4"]').first();
-    await sourceNode.hover();
-    await targetNode.hover();
-
-    const source = sourceNode.locator(".diagram-handle--right").first();
-    const target = targetNode.locator(".diagram-handle--left").first();
-
-    const sourceBox = await source.boundingBox();
-    const targetBox = await target.boundingBox();
-    test.skip(!sourceBox || !targetBox, "Source/target handles not available");
-
-    if (sourceBox && targetBox) {
-      await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
-        steps: 20,
-      });
-      await page.mouse.up();
-    }
-
-    await expect(page.locator(".react-flow__edge")).toHaveCount(7);
+    await expect(page.locator(".react-flow__node")).toHaveCount(2);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+    await expect(page.locator("textarea.code-box")).toContainText("N1(开始)");
+    await expect(page.locator("textarea.code-box")).toContainText("N2[处理步骤]");
+    await expect(page.locator("textarea.code-box")).toContainText("N1 -->N2");
   });
 });

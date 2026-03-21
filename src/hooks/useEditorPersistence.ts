@@ -2,7 +2,10 @@ import { useEffect, useRef } from "react";
 import { saveDraftSnapshot } from "../app/persistence";
 import type { DiagramModel } from "../app/types";
 
-export function useEditorPersistence(snapshot: { code: string; model: DiagramModel; codeDirty: boolean }) {
+export function useEditorPersistence(
+  snapshot: { code: string; model: DiagramModel; codeDirty: boolean },
+  enabled: boolean,
+) {
   const didMountRef = useRef(false);
 
   useEffect(() => {
@@ -11,6 +14,10 @@ export function useEditorPersistence(snapshot: { code: string; model: DiagramMod
       return;
     }
 
+    if (!enabled) {
+      return;
+    }
+
     saveDraftSnapshot(snapshot);
-  }, [snapshot]);
+  }, [enabled, snapshot]);
 }

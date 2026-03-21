@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import mermaid from "mermaid";
 import App from "./App";
 import { useEditorStore } from "./app/store";
 
@@ -96,6 +97,49 @@ describe("App", () => {
       expect(draft.codeDirty).toBe(false);
       expect(draft.version).toBe(1);
     });
+  }, 15000);
+
+  it("debounces preview rendering to the latest code edit", async () => {
+    const renderSpy = vi.spyOn(mermaid, "render").mockResolvedValue({ svg: "<svg></svg>" } as Awaited<
+      ReturnType<typeof mermaid.render>
+    >);
+
+    try {
+      const { container } = render(<App />);
+      await screen.findAllByText("开始", {}, { timeout: 12000 });
+      await waitFor(() => {
+        expect(renderSpy).toHaveBeenCalled();
+      });
+
+      renderSpy.mockClear();
+      const textbox = container.querySelector("textarea.code-box");
+      expect(textbox).not.toBeNull();
+      vi.useFakeTimers();
+
+      fireEvent.change(textbox!, { target: { value: "flowchart LR\nA-->B" } });
+      fireEvent.change(textbox!, { target: { value: "flowchart LR\nA-->C" } });
+
+      expect(renderSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(259);
+      });
+
+      expect(renderSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(renderSpy).toHaveBeenCalledTimes(1);
+        expect(renderSpy).toHaveBeenLastCalledWith(expect.any(String), "flowchart LR\nA-->C");
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   }, 15000);
 
   it("deletes a clicked node with Delete", async () => {

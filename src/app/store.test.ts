@@ -326,4 +326,33 @@ describe("editor store shortcuts state", () => {
 
     expect(useEditorStore.getState().codeDirty).toBe(true);
   });
+
+  it("does not seed undo history when init boots the sample document", () => {
+    resetStore({
+      version: 2,
+      direction: "LR",
+      rawPassthroughStatements: [],
+      groups: [],
+      nodes: [],
+      edges: [],
+    });
+
+    useEditorStore.getState().init();
+
+    expect(useEditorStore.getState().past).toHaveLength(0);
+  });
+
+  it("coalesces consecutive code edits into a single undo snapshot", () => {
+    resetStore(createModel());
+    const originalCode = useEditorStore.getState().code;
+
+    useEditorStore.getState().setCode("flowchart LR\nA-->B");
+    useEditorStore.getState().setCode("flowchart LR\nA-->C");
+
+    expect(useEditorStore.getState().past).toHaveLength(1);
+
+    useEditorStore.getState().undo();
+
+    expect(useEditorStore.getState().code).toBe(originalCode);
+  });
 });

@@ -16,7 +16,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent } from "react";
-import mermaid from "mermaid";
 import { deriveNodePaint, resolveNodeAppearance } from "./app/appearance";
 import { pickAutoHandle, validateConnection } from "./app/connection";
 import { copyExportToClipboard, type ExportFormat } from "./app/export";
@@ -24,7 +23,9 @@ import { ImportDrawioError, importDrawioXml } from "./app/import-drawio";
 import { getPaletteItem, type PaletteItemId } from "./app/palette";
 import { QUICK_CONNECT_EVENT, type QuickConnectEventDetail } from "./app/quick-connect-events";
 import { applyFlowNodePosition, modelToFlowElements } from "./app/reactflow-mapper";
+import { useAutoApplyCode } from "./hooks/useAutoApplyCode";
 import { useEditorPersistence } from "./hooks/useEditorPersistence";
+import { useMermaidPreview } from "./hooks/useMermaidPreview";
 import { summarizeNodeAppearances } from "./app/selection-appearance";
 import {
   isApplyCodeShortcut,
@@ -60,8 +61,6 @@ import { Toast } from "./components/Toast";
 import { ViewportHud } from "./components/ViewportHud";
 import { ViewportControls } from "./components/ViewportControls";
 import "./styles/app.css";
-
-mermaid.initialize({ startOnLoad: false, securityLevel: "loose", theme: "default" });
 
 const NODE_TYPES = {
   flowNode: FlowNode,
@@ -125,9 +124,7 @@ function EditorApp() {
     fitViewTick,
   } = useEditorStore();
   useEditorPersistence(useMemo(() => ({ code, model, codeDirty }), [code, codeDirty, model]));
-
-  const [previewSvg, setPreviewSvg] = useState("");
-  const [previewError, setPreviewError] = useState("");
+  const { previewSvg, previewError } = useMermaidPreview(code, pendingRenderTick);
   const [spacePressed, setSpacePressed] = useState(false);
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
@@ -149,7 +146,6 @@ function EditorApp() {
   const dragSnapRef = useRef<{ x: number | null; y: number | null }>({ x: null, y: null });
   const paletteDragRef = useRef<PaletteDragSession | null>(null);
   const suppressPaletteClickRef = useRef<PaletteItemId | null>(null);
-  const disposedRef = useRef(false);
   const deferredSelectionFrameRef = useRef<number | null>(null);
 
   const { fitView, zoomIn, zoomOut, setViewport, screenToFlowPosition } = useReactFlow();
@@ -379,38 +375,12 @@ function EditorApp() {
     viewport,
   ]);
 
-  const renderPreview = useCallback(async () => {
-    const trimmed = code.trim();
-    if (!trimmed) {
-      if (!disposedRef.current) {
-        setPreviewSvg("");
-        setPreviewError("");
-      }
-      return;
-    }
-
-    try {
-      const id = `preview-${Date.now()}`;
-      const { svg } = await mermaid.render(id, trimmed);
-      if (!disposedRef.current) {
-        setPreviewSvg(svg);
-        setPreviewError("");
-      }
-    } catch (error) {
-      if (!disposedRef.current) {
-        setPreviewError(String(error));
-      }
-    }
-  }, [code]);
-
   useEffect(() => {
     init();
   }, [init]);
 
   useEffect(() => {
-    disposedRef.current = false;
     return () => {
-      disposedRef.current = true;
       if (deferredSelectionFrameRef.current !== null) {
         window.cancelAnimationFrame(deferredSelectionFrameRef.current);
       }
@@ -431,21 +401,7 @@ function EditorApp() {
     [setSelection],
   );
 
-  useEffect(() => {
-    renderPreview();
-  }, [renderPreview, pendingRenderTick]);
-
-  useEffect(() => {
-    if (!codeDirty) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void applyCodeToModel({ quiet: true });
-    }, 260);
-
-    return () => window.clearTimeout(timer);
-  }, [applyCodeToModel, codeDirty, code]);
+  useAutoApplyCode(code, codeDirty, applyCodeToModel);
 
   useEffect(() => {
     if (!fitViewTick || fitViewTick === handledFitViewTickRef.current || elements.nodes.length === 0) {

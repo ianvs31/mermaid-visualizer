@@ -66,7 +66,7 @@ interface EditorState {
   setViewportHudVisible: (visible: boolean) => void;
   syncCodeFromModel: () => void;
   applyCodeToModel: (options?: { fitView?: boolean; quiet?: boolean }) => Promise<void>;
-  replaceModel: (model: DiagramModel, note?: string) => void;
+  replaceModel: (model: DiagramModel, note?: string, options?: { recordHistory?: boolean }) => void;
   newDocument: () => void;
   openMermaidText: (text: string) => Promise<void>;
   downloadExport: (format: ExportFormat) => void;
@@ -128,7 +128,7 @@ interface EditorState {
   commitGroupTitle: (groupId: string, title: string) => void;
   updateEdgeLabel: (edgeId: string, label: string) => void;
   clear: () => void;
-  loadSample: () => void;
+  loadSample: (options?: { recordHistory?: boolean }) => void;
   autoLayout: () => Promise<void>;
 }
 
@@ -158,7 +158,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().setUiPreset(uiPreset);
     const restored = loadDraftSnapshot();
     if (restored) {
-      get().replaceModel(restored.model, "已恢复本地草稿");
+      get().replaceModel(restored.model, "已恢复本地草稿", { recordHistory: false });
       set({
         code: restored.code,
         codeDirty: restored.codeDirty,
@@ -167,7 +167,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
       return;
     }
-    get().loadSample();
+    get().loadSample({ recordHistory: false });
   },
 
   setZoom: (zoom) => set({ zoom }),
@@ -179,7 +179,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
 
       return {
-        ...pushHistory(state),
+        ...(state.codeDirty ? {} : pushHistory(state)),
         code,
         codeDirty: true,
         message: { tone: "info", text: "正在同步 Mermaid 文本" },
@@ -287,11 +287,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  replaceModel: (model, note = "已导入模型") => {
+  replaceModel: (model, note = "已导入模型", options = {}) => {
     const normalized = structuredClone(model) as DiagramModel;
+    const recordHistory = options.recordHistory ?? true;
     normalizeChildren(normalized);
-    set({
-      ...pushHistory(get()),
+    set((state) => ({
+      ...(recordHistory ? pushHistory(state) : { past: [], future: [] }),
       model: normalized,
       warnings: [],
       inlineEditSession: undefined,
@@ -304,7 +305,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       message: { tone: "success", text: note },
       pendingRenderTick: Date.now(),
       toastTick: Date.now(),
-    });
+    }));
     get().syncCodeFromModel();
   },
 
@@ -1081,10 +1082,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().syncCodeFromModel();
   },
 
-  loadSample: () => {
+  loadSample: (options = {}) => {
     const model = createSampleModel();
+    const recordHistory = options.recordHistory ?? true;
     set((state) => ({
-      ...pushHistory(state),
+      ...(recordHistory ? pushHistory(state) : { past: [], future: [] }),
       model,
       inlineEditSession: undefined,
       selectedNodeIds: [],

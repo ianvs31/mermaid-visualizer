@@ -6,6 +6,8 @@ const ALLOWED_NODE_TYPES = new Set(["start", "terminator", "process", "decision"
 const ALLOWED_EDGE_HANDLES = new Set(["left", "right", "top", "bottom"]);
 const ALLOWED_GROUP_TYPES = new Set(["subgraph", "swimlane"]);
 const ALLOWED_LANE_ORIENTATIONS = new Set(["horizontal", "vertical"]);
+const ALLOWED_FILL_MODES = new Set(["solid", "transparent", "none"]);
+const ALLOWED_STROKE_PATTERNS = new Set(["solid", "dashed"]);
 
 export interface DraftSnapshotV1 {
   version: 1;
@@ -45,7 +47,7 @@ export function loadDraftSnapshot(): DraftSnapshotV1 | null {
 }
 
 function isValidDraftModel(model: unknown): model is DiagramModel {
-  if (!isRecord(model) || model.version !== 2 || !isDirection(model.direction)) {
+  if (!isPlainRecord(model) || model.version !== 2 || !isDirection(model.direction)) {
     return false;
   }
 
@@ -71,7 +73,7 @@ function isDiagramGroupArray(groups: unknown): boolean {
 
 function isDiagramNodeLike(node: unknown): boolean {
   return (
-    isRecord(node) &&
+    isPlainRecord(node) &&
     typeof node.id === "string" &&
     isNodeType(node.type) &&
     typeof node.label === "string" &&
@@ -80,15 +82,15 @@ function isDiagramNodeLike(node: unknown): boolean {
     isOptionalNumber(node.width) &&
     isOptionalNumber(node.height) &&
     isOptionalStringArray(node.classNames) &&
-    isOptionalRecord(node.style) &&
-    isOptionalRecord(node.appearance) &&
+    isOptionalStyle(node.style) &&
+    isOptionalAppearance(node.appearance) &&
     isOptionalString(node.parentGroupId)
   );
 }
 
 function isDiagramEdgeLike(edge: unknown): boolean {
   return (
-    isRecord(edge) &&
+    isPlainRecord(edge) &&
     typeof edge.id === "string" &&
     typeof edge.from === "string" &&
     typeof edge.to === "string" &&
@@ -96,13 +98,13 @@ function isDiagramEdgeLike(edge: unknown): boolean {
     isOptionalEdgeHandle(edge.sourceHandle) &&
     isOptionalEdgeHandle(edge.targetHandle) &&
     isOptionalStringArray(edge.classNames) &&
-    isOptionalRecord(edge.style)
+    isOptionalStyle(edge.style)
   );
 }
 
 function isDiagramGroupLike(group: unknown): boolean {
   return (
-    isRecord(group) &&
+    isPlainRecord(group) &&
     typeof group.id === "string" &&
     isGroupType(group.type) &&
     typeof group.title === "string" &&
@@ -121,8 +123,13 @@ function isDiagramGroupLike(group: unknown): boolean {
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -139,10 +146,6 @@ function isOptionalNumber(value: unknown): value is number | undefined {
 
 function isOptionalBoolean(value: unknown): value is boolean | undefined {
   return value === undefined || typeof value === "boolean";
-}
-
-function isOptionalRecord(value: unknown): value is Record<string, unknown> | undefined {
-  return value === undefined || isRecord(value);
 }
 
 function isOptionalStringArray(value: unknown): value is string[] | undefined {
@@ -174,7 +177,7 @@ function isOptionalLaneMeta(value: unknown): value is DiagramModel["groups"][num
     return true;
   }
 
-  if (!isRecord(value)) {
+  if (!isPlainRecord(value)) {
     return false;
   }
 
@@ -184,6 +187,47 @@ function isOptionalLaneMeta(value: unknown): value is DiagramModel["groups"][num
     typeof value.order === "number" &&
     Number.isInteger(value.order)
   );
+}
+
+function isOptionalStyle(value: unknown): value is Record<string, string> | undefined {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).every((item) => typeof item === "string");
+}
+
+function isOptionalAppearance(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+
+  return (
+    isFillMode(value.fillMode) &&
+    typeof value.fillColor === "string" &&
+    typeof value.strokeColor === "string" &&
+    isStrokePattern(value.strokePattern) &&
+    typeof value.strokeWidth === "number" &&
+    Number.isFinite(value.strokeWidth) &&
+    typeof value.cornerRadius === "number" &&
+    Number.isFinite(value.cornerRadius)
+  );
+}
+
+function isFillMode(value: unknown): value is "solid" | "transparent" | "none" {
+  return typeof value === "string" && ALLOWED_FILL_MODES.has(value);
+}
+
+function isStrokePattern(value: unknown): value is "solid" | "dashed" {
+  return typeof value === "string" && ALLOWED_STROKE_PATTERNS.has(value);
 }
 
 export function saveDraftSnapshot(snapshot: { code: string; codeDirty: boolean; model: DiagramModel }): void {

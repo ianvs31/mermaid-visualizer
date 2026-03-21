@@ -211,7 +211,7 @@ describe("editor store shortcuts state", () => {
     expect(useEditorStore.getState().fitViewTick).toBeGreaterThan(0);
   });
 
-  it("falls back to the sample for parseable but invalid draft payloads", () => {
+  it("falls back to the sample for parseable but style/appearance-corrupted draft payloads", () => {
     localStorage.setItem(
       "mv:draft",
       JSON.stringify({
@@ -222,23 +222,26 @@ describe("editor store shortcuts state", () => {
         model: {
           version: 2,
           direction: "LR",
-          nodes: [],
-          edges: [],
-          groups: [
+          nodes: [
             {
-              id: "G1",
-              type: "lane",
-              title: "分区",
-              direction: "diagonal",
-              childNodeIds: [],
-              childGroupIds: [],
-              laneMeta: { orientation: "spiral", order: "first" },
-              x: 40,
-              y: 40,
-              width: 120,
-              height: 80,
+              id: "R1",
+              type: "process",
+              label: "恢复处理",
+              x: 80,
+              y: 120,
+              style: { fill: "#ffffff", width: 2 },
+            },
+            {
+              id: "R2",
+              type: "process",
+              label: "恢复处理",
+              x: 280,
+              y: 120,
+              appearance: { fillMode: "solid", fillColor: "#fff", strokeColor: "#1f2937", strokePattern: "solid", strokeWidth: 2 },
             },
           ],
+          edges: [],
+          groups: [],
           rawPassthroughStatements: [],
         },
       }),

@@ -66,6 +66,50 @@ describe("draft persistence", () => {
     expect(loadDraftSnapshot()).toBeNull();
   });
 
+  it("returns null for snapshots with invalid node style payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [{ id: "N1", type: "process", label: "节点", x: 80, y: 120, style: { fill: "#fff", width: 2 } }],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
+  it("returns null for snapshots with array-based style payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [{ id: "N1", type: "process", label: "节点", x: 80, y: 120, style: ["fill:#fff"] }],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
   it("returns null for snapshots with invalid node types", () => {
     localStorage.setItem(
       "mv:draft",
@@ -78,6 +122,59 @@ describe("draft persistence", () => {
           version: 2,
           direction: "LR",
           nodes: [{ id: "N1", type: "mystery", label: "节点", x: 80, y: 120 }],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
+  it("returns null for snapshots with malformed appearance payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [
+            {
+              id: "N1",
+              type: "process",
+              label: "节点",
+              x: 80,
+              y: 120,
+              appearance: { fillMode: "solid", fillColor: "#fff" },
+            },
+          ],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
+  it("returns null for snapshots with array-based appearance payloads", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [{ id: "N1", type: "process", label: "节点", x: 80, y: 120, appearance: [] }],
           edges: [],
           groups: [],
           rawPassthroughStatements: [],

@@ -324,7 +324,10 @@ describe("App", () => {
 
     expect(screen.getByRole("button", { name: "新建图表" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 Mermaid 文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 draw.io 文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载 Mermaid" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载 draw.io XML" })).toBeInTheDocument();
   }, 15000);
 
   it("keeps current diagram when pasted XML import fails", async () => {

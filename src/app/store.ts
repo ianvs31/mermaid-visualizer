@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { resolveNodeAppearance, stripPaintStyle } from "./appearance";
+import { buildExportText, exportMimeTypeFor, type ExportFormat } from "./export";
+import { defaultFilenameFor, downloadTextFile } from "./file-io";
 import { applyElkLayout } from "./layout";
 import { loadDraftSnapshot } from "./persistence";
 import { parseMermaidFlowchartV2 } from "./parser";
@@ -67,6 +69,7 @@ interface EditorState {
   replaceModel: (model: DiagramModel, note?: string) => void;
   newDocument: () => void;
   openMermaidText: (text: string) => Promise<void>;
+  downloadExport: (format: ExportFormat) => void;
   beginInlineEdit: (session: InlineEditSession) => void;
   endInlineEdit: () => void;
   setSelection: (nodeIds: string[], edgeIds: string[], groupIds: string[]) => void;
@@ -371,6 +374,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       fitViewTick: Date.now(),
       toastTick: Date.now(),
     }));
+  },
+
+  downloadExport: (format) => {
+    const model = get().model;
+
+    try {
+      downloadTextFile(defaultFilenameFor(format), buildExportText(format, model), exportMimeTypeFor(format));
+      set({
+        message: {
+          tone: "success",
+          text:
+            format === "drawio-xml"
+              ? "已下载 draw.io XML"
+              : format === "editor-json"
+                ? "已下载 JSON"
+                : "已下载 Mermaid",
+        },
+        toastTick: Date.now(),
+      });
+    } catch {
+      set({
+        message: { tone: "error", text: "下载失败，请检查浏览器权限" },
+        toastTick: Date.now(),
+      });
+    }
   },
 
   beginInlineEdit: (session) => {

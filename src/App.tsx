@@ -19,8 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import mermaid from "mermaid";
 import { deriveNodePaint, resolveNodeAppearance } from "./app/appearance";
 import { pickAutoHandle, validateConnection } from "./app/connection";
-import { buildExportText, copyExportToClipboard, exportMimeTypeFor, type ExportFormat } from "./app/export";
-import { defaultFilenameFor, downloadTextFile } from "./app/file-io";
+import { copyExportToClipboard, type ExportFormat } from "./app/export";
 import { ImportDrawioError, importDrawioXml } from "./app/import-drawio";
 import { getPaletteItem, type PaletteItemId } from "./app/palette";
 import { QUICK_CONNECT_EVENT, type QuickConnectEventDetail } from "./app/quick-connect-events";
@@ -97,6 +96,7 @@ function EditorApp() {
     replaceModel,
     newDocument,
     openMermaidText,
+    downloadExport,
     beginInlineEdit,
     endInlineEdit,
     undo,
@@ -1200,25 +1200,6 @@ function EditorApp() {
     return window.confirm("当前图表将被覆盖，是否继续？");
   }, [codeDirty, model.edges.length, model.groups.length, model.nodes.length, model.rawPassthroughStatements.length]);
 
-  const handleDownloadExport = useCallback(
-    (format: ExportFormat) => {
-      try {
-        downloadTextFile(defaultFilenameFor(format), buildExportText(format, model), exportMimeTypeFor(format));
-        notify(
-          "success",
-          format === "drawio-xml"
-            ? "已下载 draw.io XML"
-            : format === "editor-json"
-              ? "已下载 JSON"
-              : "已下载 Mermaid",
-        );
-      } catch {
-        notify("error", "下载失败，请检查浏览器权限");
-      }
-    },
-    [model, notify],
-  );
-
   const handleNewDocument = useCallback(() => {
     if (!confirmReplaceDiagram()) {
       return;
@@ -1528,7 +1509,7 @@ function EditorApp() {
             onToggleSnap={toggleSnap}
             onNewDocument={handleNewDocument}
             onCopyExport={(format) => void handleCopyExport(format)}
-            onDownloadExport={handleDownloadExport}
+            onDownloadExport={downloadExport}
             onImportMermaidFile={(file) => void handleOpenMermaidFile(file)}
             onImportXmlText={handleImportXmlText}
             onImportXmlFile={(file) => void handleImportXmlFile(file)}

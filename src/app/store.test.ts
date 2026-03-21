@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as fileIo from "./file-io";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 import { useEditorStore } from "./store";
 import type { DiagramModel } from "./types";
@@ -178,6 +179,19 @@ describe("editor store shortcuts state", () => {
     expect(next.model.nodes.find((node) => node.id === "N2")?.appearance?.fillColor).toBe("#eb5c33");
     expect(next.model.nodes.find((node) => node.id === "N2")?.appearance?.strokeColor).toBe("#1f2937");
     expect(next.code).toContain("%% editor:appearance N2 fillMode=transparent fillColor=#eb5c33 strokeColor=#1f2937 strokePattern=dashed radius=24 width=2");
+  });
+
+  it("exposes an explicit downloadExport action for browser file downloads", () => {
+    resetStore(createModel());
+    const downloadSpy = vi.spyOn(fileIo, "downloadTextFile").mockImplementation(() => {});
+
+    useEditorStore.getState().downloadExport("editor-json");
+
+    expect(downloadSpy).toHaveBeenCalledWith(
+      "diagram.mermaid-visualizer.json",
+      expect.stringContaining("\"format\": \"mermaid-visualizer\""),
+      "application/json;charset=utf-8",
+    );
   });
 
   it("prefers restoring a saved draft over loading the sample", () => {

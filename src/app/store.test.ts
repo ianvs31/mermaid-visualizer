@@ -181,17 +181,28 @@ describe("editor store shortcuts state", () => {
     expect(next.code).toContain("%% editor:appearance N2 fillMode=transparent fillColor=#eb5c33 strokeColor=#1f2937 strokePattern=dashed radius=24 width=2");
   });
 
-  it("exposes an explicit downloadExport action for browser file downloads", () => {
+  it("downloads Mermaid text through the explicit action and reopens it successfully", async () => {
     resetStore(createModel());
-    const downloadSpy = vi.spyOn(fileIo, "downloadTextFile").mockImplementation(() => {});
+    let downloadedText = "";
+    const downloadSpy = vi.spyOn(fileIo, "downloadTextFile").mockImplementation((filename, text, type) => {
+      expect(filename).toBe("diagram.md");
+      expect(type).toBe("text/markdown;charset=utf-8");
+      downloadedText = text;
+    });
 
-    useEditorStore.getState().downloadExport("editor-json");
+    useEditorStore.getState().downloadExport("markdown-mermaid");
 
-    expect(downloadSpy).toHaveBeenCalledWith(
-      "diagram.mermaid-visualizer.json",
-      expect.stringContaining("\"format\": \"mermaid-visualizer\""),
-      "application/json;charset=utf-8",
-    );
+    expect(downloadSpy).toHaveBeenCalledTimes(1);
+    expect(downloadedText).toContain("```mermaid");
+
+    await useEditorStore.getState().openMermaidText(downloadedText);
+
+    const next = useEditorStore.getState();
+    expect(next.message.text).toContain("已打开 Mermaid 文件");
+    expect(next.code).toContain("flowchart LR");
+    expect(next.code).not.toContain("```");
+    expect(next.model.nodes.map((node) => node.id)).toEqual(["N1", "N2"]);
+    expect(next.model.rawPassthroughStatements).toEqual([]);
   });
 
   it("prefers restoring a saved draft over loading the sample", () => {

@@ -330,6 +330,30 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "下载 draw.io XML" })).toBeInTheDocument();
   }, 15000);
 
+  it("honors the overwrite confirmation guard when creating a new document", async () => {
+    render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const before = useEditorStore.getState().code;
+    const confirmSpy = vi.spyOn(window, "confirm");
+    confirmSpy.mockReturnValueOnce(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "帮助与导出" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建图表" }));
+
+    expect(useEditorStore.getState().code).toBe(before);
+    expect(useEditorStore.getState().model.nodes.length).toBeGreaterThan(0);
+
+    confirmSpy.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole("button", { name: "新建图表" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().code).toBe("flowchart LR");
+      expect(useEditorStore.getState().model.nodes).toHaveLength(0);
+      expect(useEditorStore.getState().message.text).toContain("新建");
+    });
+  }, 15000);
+
   it("keeps current diagram when pasted XML import fails", async () => {
     render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });

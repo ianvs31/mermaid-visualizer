@@ -329,7 +329,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   openMermaidText: async (text) => {
-    const nextCode = text.trim();
+    const nextCode = normalizeOpenedMermaidText(text);
     if (!nextCode) {
       set({
         message: { tone: "error", text: "Mermaid 内容为空，打开已取消" },
@@ -1147,6 +1147,15 @@ function pushHistory(
     past: [...state.past.slice(-(MAX_HISTORY - 1)), createHistorySnapshot(state)],
     future: [],
   };
+}
+
+function normalizeOpenedMermaidText(text: string): string {
+  const trimmed = text.trim();
+  const fencedMatch = trimmed.match(/^```mermaid\s*\r?\n([\s\S]*?)\r?\n```$/i);
+  if (fencedMatch) {
+    return fencedMatch[1].trim();
+  }
+  return trimmed;
 }
 
 function buildClipboardFromSelection(state: Pick<EditorState, "model" | "selectedNodeIds" | "selectedGroupIds">): ClipboardSnapshot | null {

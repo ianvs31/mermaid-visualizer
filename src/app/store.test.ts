@@ -65,10 +65,12 @@ function resetStore(model = createModel()): void {
 
 describe("editor store shortcuts state", () => {
   beforeEach(() => {
+    localStorage.clear();
     resetStore();
   });
 
   afterEach(() => {
+    localStorage.clear();
     resetStore();
   });
 
@@ -176,5 +178,34 @@ describe("editor store shortcuts state", () => {
     expect(next.model.nodes.find((node) => node.id === "N2")?.appearance?.fillColor).toBe("#eb5c33");
     expect(next.model.nodes.find((node) => node.id === "N2")?.appearance?.strokeColor).toBe("#1f2937");
     expect(next.code).toContain("%% editor:appearance N2 fillMode=transparent fillColor=#eb5c33 strokeColor=#1f2937 strokePattern=dashed radius=24 width=2");
+  });
+
+  it("prefers restoring a saved draft over loading the sample", () => {
+    const restoredModel: DiagramModel = {
+      version: 2,
+      direction: "LR",
+      rawPassthroughStatements: [],
+      groups: [],
+      nodes: [
+        { id: "R1", type: "start", label: "恢复开始", x: 80, y: 120, width: 130, height: 66 },
+        { id: "R2", type: "process", label: "恢复处理", x: 280, y: 120, width: 148, height: 72 },
+      ],
+      edges: [{ id: "RE1", from: "R1", to: "R2", label: "" }],
+    };
+
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nR1-->R2",
+        model: restoredModel,
+      }),
+    );
+
+    useEditorStore.getState().init();
+
+    expect(useEditorStore.getState().code).toContain("R1-->R2");
+    expect(useEditorStore.getState().message.text).toContain("恢复");
   });
 });

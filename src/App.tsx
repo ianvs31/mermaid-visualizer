@@ -24,6 +24,7 @@ import { ImportDrawioError, importDrawioXml } from "./app/import-drawio";
 import { getPaletteItem, type PaletteItemId } from "./app/palette";
 import { QUICK_CONNECT_EVENT, type QuickConnectEventDetail } from "./app/quick-connect-events";
 import { applyFlowNodePosition, modelToFlowElements } from "./app/reactflow-mapper";
+import { useEditorPersistence } from "./hooks/useEditorPersistence";
 import { summarizeNodeAppearances } from "./app/selection-appearance";
 import {
   isApplyCodeShortcut,
@@ -118,6 +119,7 @@ function EditorApp() {
     pendingRenderTick,
     fitViewTick,
   } = useEditorStore();
+  useEditorPersistence(useMemo(() => ({ code, model, codeDirty }), [code, codeDirty, model]));
 
   const [previewSvg, setPreviewSvg] = useState("");
   const [previewError, setPreviewError] = useState("");

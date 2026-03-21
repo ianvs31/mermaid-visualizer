@@ -1,6 +1,11 @@
 import type { DiagramModel } from "./types";
 
 const STORAGE_KEY = "mv:draft";
+const ALLOWED_DIRECTIONS = new Set(["LR", "RL", "TB", "BT", "TD"]);
+const ALLOWED_NODE_TYPES = new Set(["start", "terminator", "process", "decision", "custom"]);
+const ALLOWED_EDGE_HANDLES = new Set(["left", "right", "top", "bottom"]);
+const ALLOWED_GROUP_TYPES = new Set(["subgraph", "swimlane"]);
+const ALLOWED_LANE_ORIENTATIONS = new Set(["horizontal", "vertical"]);
 
 export interface DraftSnapshotV1 {
   version: 1;
@@ -40,7 +45,7 @@ export function loadDraftSnapshot(): DraftSnapshotV1 | null {
 }
 
 function isValidDraftModel(model: unknown): model is DiagramModel {
-  if (!isRecord(model) || model.version !== 2 || typeof model.direction !== "string") {
+  if (!isRecord(model) || model.version !== 2 || !isDirection(model.direction)) {
     return false;
   }
 
@@ -68,7 +73,7 @@ function isDiagramNodeLike(node: unknown): boolean {
   return (
     isRecord(node) &&
     typeof node.id === "string" &&
-    typeof node.type === "string" &&
+    isNodeType(node.type) &&
     typeof node.label === "string" &&
     typeof node.x === "number" &&
     typeof node.y === "number" &&
@@ -88,8 +93,8 @@ function isDiagramEdgeLike(edge: unknown): boolean {
     typeof edge.from === "string" &&
     typeof edge.to === "string" &&
     isOptionalString(edge.label) &&
-    isOptionalString(edge.sourceHandle) &&
-    isOptionalString(edge.targetHandle) &&
+    isOptionalEdgeHandle(edge.sourceHandle) &&
+    isOptionalEdgeHandle(edge.targetHandle) &&
     isOptionalStringArray(edge.classNames) &&
     isOptionalRecord(edge.style)
   );
@@ -99,9 +104,9 @@ function isDiagramGroupLike(group: unknown): boolean {
   return (
     isRecord(group) &&
     typeof group.id === "string" &&
-    typeof group.type === "string" &&
+    isGroupType(group.type) &&
     typeof group.title === "string" &&
-    isOptionalString(group.direction) &&
+    isOptionalDirection(group.direction) &&
     isOptionalString(group.parentGroupId) &&
     Array.isArray(group.childNodeIds) &&
     group.childNodeIds.every((item) => typeof item === "string") &&
@@ -111,7 +116,7 @@ function isDiagramGroupLike(group: unknown): boolean {
     typeof group.y === "number" &&
     typeof group.width === "number" &&
     typeof group.height === "number" &&
-    isOptionalRecord(group.laneMeta) &&
+    isOptionalLaneMeta(group.laneMeta) &&
     isOptionalBoolean(group.collapsed)
   );
 }
@@ -142,6 +147,43 @@ function isOptionalRecord(value: unknown): value is Record<string, unknown> | un
 
 function isOptionalStringArray(value: unknown): value is string[] | undefined {
   return value === undefined || isStringArray(value);
+}
+
+function isDirection(value: unknown): value is DiagramModel["direction"] {
+  return typeof value === "string" && ALLOWED_DIRECTIONS.has(value);
+}
+
+function isOptionalDirection(value: unknown): value is DiagramModel["direction"] | undefined {
+  return value === undefined || isDirection(value);
+}
+
+function isNodeType(value: unknown): value is DiagramModel["nodes"][number]["type"] {
+  return typeof value === "string" && ALLOWED_NODE_TYPES.has(value);
+}
+
+function isOptionalEdgeHandle(value: unknown): value is DiagramModel["edges"][number]["sourceHandle"] | undefined {
+  return value === undefined || (typeof value === "string" && ALLOWED_EDGE_HANDLES.has(value));
+}
+
+function isGroupType(value: unknown): value is DiagramModel["groups"][number]["type"] {
+  return typeof value === "string" && ALLOWED_GROUP_TYPES.has(value);
+}
+
+function isOptionalLaneMeta(value: unknown): value is DiagramModel["groups"][number]["laneMeta"] | undefined {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.orientation === "string" &&
+    ALLOWED_LANE_ORIENTATIONS.has(value.orientation) &&
+    typeof value.order === "number" &&
+    Number.isInteger(value.order)
+  );
 }
 
 export function saveDraftSnapshot(snapshot: { code: string; codeDirty: boolean; model: DiagramModel }): void {

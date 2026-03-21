@@ -66,6 +66,28 @@ describe("draft persistence", () => {
     expect(loadDraftSnapshot()).toBeNull();
   });
 
+  it("returns null for snapshots with invalid node types", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [{ id: "N1", type: "mystery", label: "节点", x: 80, y: 120 }],
+          edges: [],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
   it("returns null for snapshots with malformed edge payloads", () => {
     localStorage.setItem(
       "mv:draft",
@@ -79,6 +101,28 @@ describe("draft persistence", () => {
           direction: "LR",
           nodes: [],
           edges: [{ id: "E1", from: "N1", to: 42 }],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
+  it("returns null for snapshots with invalid edge handles", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [],
+          edges: [{ id: "E1", from: "N1", to: "N2", sourceHandle: "diagonal" }],
           groups: [],
           rawPassthroughStatements: [],
         },
@@ -102,6 +146,42 @@ describe("draft persistence", () => {
           nodes: [],
           edges: [],
           groups: [{ id: "G1", type: "swimlane", title: "分区", x: "oops", y: 40, width: 120, height: 80 }],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()).toBeNull();
+  });
+
+  it("returns null for snapshots with invalid group enums and laneMeta", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "sideways",
+          nodes: [],
+          edges: [],
+          groups: [
+            {
+              id: "G1",
+              type: "lane",
+              title: "分区",
+              direction: "diagonal",
+              childNodeIds: [],
+              childGroupIds: [],
+              laneMeta: { orientation: "spiral", order: "first" },
+              x: 40,
+              y: 40,
+              width: 120,
+              height: 80,
+            },
+          ],
           rawPassthroughStatements: [],
         },
       }),

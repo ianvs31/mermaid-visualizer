@@ -15,7 +15,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent } from "react";
 import mermaid from "mermaid";
 import { deriveNodePaint, resolveNodeAppearance } from "./app/appearance";
 import { pickAutoHandle, validateConnection } from "./app/connection";
@@ -106,6 +106,8 @@ function EditorApp() {
     pasteClipboard,
     addNode,
     addSwimlane,
+    assignSelectionToGroup,
+    toggleGroupCollapse,
     updateNodeGeometry,
     updateNodeParentGroup,
     updateGroupGeometry,
@@ -219,6 +221,7 @@ function EditorApp() {
           updateGroupGeometry(groupId, current.x, current.y, width, height, true);
           syncCodeFromModel();
         },
+        onToggleGroupCollapse: toggleGroupCollapse,
       }),
     [
       connectingNodeId,
@@ -228,6 +231,7 @@ function EditorApp() {
       selectedGroupIds,
       selectedNodeIds,
       syncCodeFromModel,
+      toggleGroupCollapse,
       updateGroupGeometry,
     ],
   );
@@ -246,6 +250,14 @@ function EditorApp() {
     () => model.nodes.filter((node) => selectedNodeIds.includes(node.id)),
     [model.nodes, selectedNodeIds],
   );
+
+  const selectedGroup = useMemo(() => {
+    if (selectedGroupIds.length !== 1) {
+      return null;
+    }
+
+    return model.groups.find((group) => group.id === selectedGroupIds[0]) ?? null;
+  }, [model.groups, selectedGroupIds]);
 
   const selectedNodeAppearance = useMemo<NodeAppearance | null>(
     () => (selectedNode ? resolveNodeAppearance(selectedNode) : null),
@@ -293,6 +305,29 @@ function EditorApp() {
     }
     return null;
   }, [multiNodeBounds, selectedNode, selectedNodePaint, selectionAppearanceSummary, viewport]);
+
+  const canAssignSelectionToGroup =
+    effectiveToolMode === "select" &&
+    !!selectedGroup &&
+    selectedNodeIds.length > 0 &&
+    selectedEdgeIds.length === 0 &&
+    !inlineEditSession &&
+    !edgeEditor &&
+    !quickCreateSession &&
+    !laneDrawArmed &&
+    !laneDraft;
+
+  const groupActionAnchor = useMemo(() => {
+    if (!canAssignSelectionToGroup || !selectedGroup) {
+      return null;
+    }
+
+    const rect = toScreenRect(selectedGroup, viewport);
+    return {
+      x: rect.x + rect.width / 2,
+      y: rect.y - 18,
+    };
+  }, [canAssignSelectionToGroup, selectedGroup, viewport]);
 
   const inlineTargetRect = useMemo<InlineOverlayRect | null>(() => {
     if (!inlineEditSession) {
@@ -1428,6 +1463,32 @@ function EditorApp() {
           />
         ) : null}
 
+        {!isClassicPreset && groupActionAnchor ? (
+          <div
+            className="figjam-toolbar figjam-toolbar--context"
+            style={{ left: groupActionAnchor.x, top: groupActionAnchor.y }}
+            role="toolbar"
+            aria-label="分区操作"
+            onPointerDown={stopUiEvent}
+            onMouseDown={stopUiEvent}
+            onClick={stopUiEvent}
+          >
+            <button
+              type="button"
+              className="context-trigger"
+              aria-label="移入当前分区"
+              onPointerDown={stopUiEvent}
+              onMouseDown={stopUiEvent}
+              onClick={(event) => {
+                stopUiEvent(event);
+                assignSelectionToGroup();
+              }}
+            >
+              <span className="context-trigger__label">移入当前分区</span>
+            </button>
+          </div>
+        ) : null}
+
         <InlineTextOverlay
           session={inlineEditSession}
           targetRect={inlineTargetRect}
@@ -1927,6 +1988,10 @@ function toLocalDraftStyle(draft: LaneDraft, rect: DOMRect): CSSProperties {
 
 function roundCanvasValue(value: number): number {
   return Math.round(value);
+}
+
+function stopUiEvent(event: SyntheticEvent) {
+  event.stopPropagation();
 }
 
 function isPrintableKey(event: KeyboardEvent): boolean {

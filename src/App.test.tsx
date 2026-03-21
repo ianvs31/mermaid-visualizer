@@ -200,6 +200,34 @@ describe("App", () => {
     });
   }, 15000);
 
+  it("collapses a swimlane from the group header control", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "折叠 业务侧" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.groups.find((group) => group.id === "G1")?.collapsed).toBe(true);
+    });
+  }, 15000);
+
+  it("moves selected nodes into the selected group from the contextual action", async () => {
+    const { container } = render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const targetNode = container.querySelector('.react-flow__node[data-id="N4"]');
+    const targetGroup = container.querySelector('.react-flow__node[data-id="G1"]');
+    expect(targetNode).not.toBeNull();
+    expect(targetGroup).not.toBeNull();
+
+    fireEvent.click(targetNode!);
+    fireEvent.click(targetGroup!, { shiftKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "移入当前分区" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.nodes.find((node) => node.id === "N4")?.parentGroupId).toBe("G1");
+    });
+  }, 15000);
+
   it("arms swimlane drawing mode from the bottom toolbar", async () => {
     render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });

@@ -146,6 +146,26 @@ describe("editor store shortcuts state", () => {
     expect(next.code).toMatch(/subgraph G1\[业务侧\][\s\S]*end[\s\S]*N1\(开始\)/);
   });
 
+  it("toggles collapse state for a selected group", () => {
+    resetStore(createGroupedModel());
+
+    useEditorStore.getState().toggleGroupCollapse("G1");
+
+    expect(useEditorStore.getState().model.groups[0].collapsed).toBe(true);
+  });
+
+  it("moves selected nodes into the selected group", () => {
+    resetStore(createGroupedModel());
+    const store = useEditorStore.getState();
+
+    store.setSelection(["N1"], [], ["G1"]);
+    store.assignSelectionToGroup();
+
+    const next = useEditorStore.getState();
+    expect(next.model.nodes.find((node) => node.id === "N1")?.parentGroupId).toBe("G1");
+    expect(next.model.groups[0].childNodeIds).toEqual(["N1"]);
+  });
+
   it("creates a swimlane from explicit drag bounds", () => {
     resetStore(createModel());
     const store = useEditorStore.getState();

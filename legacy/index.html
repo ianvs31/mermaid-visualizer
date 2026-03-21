@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mermaid Flow Editor MVP</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel left">
+        <h1>Mermaid 可视化编辑器</h1>
+        <p class="muted">先做基础流程图：拖拽、连线、实时预览</p>
+
+        <section>
+          <h2>节点库</h2>
+          <div id="palette" class="palette"></div>
+        </section>
+
+        <section>
+          <h2>操作</h2>
+          <div class="actions">
+            <button id="btnClear" type="button">清空画布</button>
+            <button id="btnSample" type="button">加载示例</button>
+          </div>
+          <p class="hint">
+            操作提示：拖拽节点移动；从节点右侧圆点拖到目标节点创建连线；双击节点改名；选中后按 Delete 删除。
+          </p>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <div id="canvas" class="canvas" aria-label="flow canvas">
+          <svg id="edgesSvg" class="edges" aria-hidden="true">
+            <defs>
+              <marker
+                id="arrow"
+                markerWidth="10"
+                markerHeight="8"
+                refX="9"
+                refY="4"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L10,4 L0,8 z"></path>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </main>
+
+      <aside class="panel right">
+        <section>
+          <h2>Mermaid 代码</h2>
+          <textarea id="mermaidCode"></textarea>
+          <div class="code-actions">
+            <button id="btnApplyCode" type="button">同步到画布</button>
+            <span id="codeStatus" class="code-status">可直接编辑 Mermaid 文本</span>
+          </div>
+        </section>
+
+        <section>
+          <div class="preview-head">
+            <h2>实时预览</h2>
+            <button id="btnRender" type="button">重新渲染</button>
+          </div>
+          <div id="preview" class="preview"></div>
+        </section>
+      </aside>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

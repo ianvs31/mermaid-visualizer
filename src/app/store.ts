@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { resolveNodeAppearance, stripPaintStyle } from "./appearance";
 import { applyElkLayout } from "./layout";
+import { loadDraftSnapshot } from "./persistence";
 import { parseMermaidFlowchartV2 } from "./parser";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 import {
@@ -150,6 +151,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   init: () => {
     const uiPreset = readUiPresetFromUrl();
     get().setUiPreset(uiPreset);
+    const restored = loadDraftSnapshot();
+    if (restored) {
+      get().replaceModel(restored.model, "已恢复本地草稿");
+      set({ code: restored.code, codeDirty: restored.codeDirty, warnings: [] });
+      return;
+    }
     get().loadSample();
   },
 

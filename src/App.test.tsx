@@ -20,11 +20,13 @@ const IMPORTABLE_DRAWIO_XML = `<mxGraphModel><root>
 const INVALID_COMPRESSED_XML = `<mxfile><diagram>Zm9vYmFy</diagram></mxfile>`;
 
 beforeEach(() => {
+  localStorage.clear();
   useEditorStore.getState().loadSample();
 });
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   useEditorStore.getState().loadSample();
 });
 
@@ -35,6 +37,35 @@ describe("App", () => {
     expect(starts.length).toBeGreaterThan(0);
     const matched = await screen.findAllByText("提交申请", {}, { timeout: 12000 });
     expect(matched.length).toBeGreaterThan(0);
+  }, 15000);
+
+  it("boots with a saved draft present", async () => {
+    const restoredModel = {
+      version: 2 as const,
+      direction: "LR" as const,
+      rawPassthroughStatements: [],
+      groups: [],
+      nodes: [
+        { id: "R1", type: "start" as const, label: "恢复开始", x: 80, y: 120, width: 130, height: 66 },
+        { id: "R2", type: "process" as const, label: "恢复处理", x: 280, y: 120, width: 148, height: 72 },
+      ],
+      edges: [{ id: "RE1", from: "R1", to: "R2", label: "" }],
+    };
+
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nR1-->R2",
+        model: restoredModel,
+      }),
+    );
+
+    useEditorStore.getState().init();
+    render(<App />);
+
+    await screen.findByRole("application");
   }, 15000);
 
   it("deletes a clicked node with Delete", async () => {

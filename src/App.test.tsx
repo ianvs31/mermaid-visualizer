@@ -58,14 +58,16 @@ describe("App", () => {
         version: 1,
         savedAt: "2026-03-21T10:00:00.000Z",
         code: "flowchart LR\nR1-->R2",
+        codeDirty: false,
         model: restoredModel,
       }),
     );
 
-    useEditorStore.getState().init();
     render(<App />);
 
-    await screen.findByRole("application");
+    await screen.findAllByText("恢复开始", {}, { timeout: 12000 });
+    expect(useEditorStore.getState().code).toContain("R1-->R2");
+    expect(useEditorStore.getState().message.text).toContain("恢复");
   }, 15000);
 
   it("deletes a clicked node with Delete", async () => {

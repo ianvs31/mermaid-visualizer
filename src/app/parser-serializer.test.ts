@@ -5,7 +5,7 @@ import { serializeMermaidFlowchartV2 } from "./serializer";
 describe("parseMermaidFlowchartV2", () => {
   it("parses canonical start and terminator shapes", () => {
     const source = `flowchart LR
-A((开始))
+A([开始])
 B([结束])
 A --> B`;
 
@@ -18,7 +18,7 @@ A --> B`;
 
   it("parses dashed edges and preserves dashed labels", () => {
     const source = `flowchart LR
-A((开始)) -. 虚线说明 .-> B([结束])`;
+A([开始]) -. 虚线说明 .-> B([结束])`;
 
     const result = parseMermaidFlowchartV2(source);
 
@@ -125,13 +125,13 @@ N1 --> N2`;
 
   it("round-trips canonical node shapes and dashed labeled edges", () => {
     const source = `flowchart LR
-A((开始)) -. 虚线说明 .-> B([结束])`;
+A([开始]) -. 虚线说明 .-> B([结束])`;
 
     const parsed = parseMermaidFlowchartV2(source);
     const out = serializeMermaidFlowchartV2(parsed.model);
     const reparsed = parseMermaidFlowchartV2(out);
 
-    expect(out).toContain("A((开始))");
+    expect(out).toContain("A([开始])");
     expect(out).toContain("B([结束])");
     expect(out).toContain("A -. 虚线说明 .-> B");
     expect(reparsed.model.nodes.find((node) => node.id === "A")?.type).toBe("start");

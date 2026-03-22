@@ -11,7 +11,7 @@ test.describe("FigJam interaction preset", () => {
 
     await expect(page.locator(".react-flow__node")).toHaveCount(2);
     await expect(page.locator(".react-flow__edge")).toHaveCount(1);
-    await expect(page.locator("textarea.code-box")).toContainText("N1((开始))");
+    await expect(page.locator("textarea.code-box")).toContainText("N1([开始])");
     await expect(page.locator("textarea.code-box")).toContainText("N2[处理步骤]");
     await expect(page.locator("textarea.code-box")).toContainText("N1 --> N2");
   });

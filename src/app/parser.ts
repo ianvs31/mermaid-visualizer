@@ -448,15 +448,16 @@ function mapShape(shape: "circle" | "stadium" | "round" | "rect" | "decision", l
     return "start";
   }
   if (shape === "stadium") {
-    return "terminator";
+    return isTerminatorLabel(label) ? "terminator" : "start";
   }
   if (shape === "round") {
-    if (/(结束|终止|完成|END|STOP|DONE)/i.test(label)) {
-      return "terminator";
-    }
-    return "start";
+    return isTerminatorLabel(label) ? "terminator" : "start";
   }
   return "process";
+}
+
+function isTerminatorLabel(label: string): boolean {
+  return /(结束|终止|完成|END|STOP|DONE)/i.test(label);
 }
 
 function parseStyleBlock(content: string): Record<string, string> {

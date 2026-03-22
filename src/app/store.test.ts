@@ -131,7 +131,7 @@ describe("editor store shortcuts state", () => {
     const next = useEditorStore.getState();
     expect(next.code).toContain("subgraph G1[执行泳道]");
     expect(next.code).toContain("%% editor:lane G1 horizontal 1");
-    expect(next.code).toContain("N1((开始))");
+    expect(next.code).toContain("N1([开始])");
   });
 
   it("clears node parent when dragged out of a swimlane", () => {
@@ -144,7 +144,7 @@ describe("editor store shortcuts state", () => {
 
     const next = useEditorStore.getState();
     expect(next.model.nodes.find((node) => node.id === "N1")?.parentGroupId).toBeUndefined();
-    expect(next.code).toMatch(/subgraph G1\[业务侧\][\s\S]*end[\s\S]*N1\(\(开始\)\)/);
+    expect(next.code).toMatch(/subgraph G1\[业务侧\][\s\S]*end[\s\S]*N1\(\[开始\]\)/);
   });
 
   it("toggles collapse state for a selected group", () => {

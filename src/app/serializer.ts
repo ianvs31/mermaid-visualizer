@@ -98,10 +98,7 @@ function shapeOf(type: DiagramNodeType, label: string): string {
   if (type === "decision") {
     return `{${label}}`;
   }
-  if (type === "start") {
-    return `((${label}))`;
-  }
-  if (type === "terminator") {
+  if (type === "start" || type === "terminator") {
     return `([${label}])`;
   }
   if (type === "custom") {

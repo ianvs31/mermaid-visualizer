@@ -13,7 +13,7 @@ import { inferAppearanceFromStyle, stripPaintStyle } from "./appearance";
 
 interface EndpointToken {
   id: string;
-  shape?: "round" | "rect" | "decision";
+  shape?: "circle" | "stadium" | "round" | "rect" | "decision";
   label?: string;
 }
 
@@ -167,7 +167,7 @@ export function parseMermaidFlowchartV2(input: string): ParseResult {
       continue;
     }
 
-    if (lineWithoutComment.includes("-->") || lineWithoutComment.includes("---") || lineWithoutComment.includes("==>")) {
+    if (looksLikeEdgeStatement(lineWithoutComment)) {
       const parsedEdge = parseEdgeStatement(lineWithoutComment);
       if (!parsedEdge) {
         warnings.push(`第 ${i + 1} 行连线语法未完全支持，已保留原语句。`);
@@ -184,6 +184,7 @@ export function parseMermaidFlowchartV2(input: string): ParseResult {
         from: from.id,
         to: to.id,
         label: parsedEdge.label || "",
+        strokePattern: parsedEdge.strokePattern,
       });
       continue;
     }
@@ -320,46 +321,80 @@ function parseSubgraphDescriptor(content: string): { id?: string; title?: string
   };
 }
 
-function parseEdgeStatement(line: string): { from: EndpointToken; to: EndpointToken; label?: string } | null {
-  if ((line.match(/-->/g) || []).length > 1) {
+function parseEdgeStatement(
+  line: string,
+): { from: EndpointToken; to: EndpointToken; label?: string; strokePattern: "solid" | "dashed" } | null {
+  if (countSupportedEdgeOperators(line) > 1) {
     return null;
   }
 
-  const matched = line.match(/^(.*?)\s*-->\s*(?:\|([^|]+)\|\s*)?(.*?)$/);
-  if (!matched) {
-    return null;
+  const patterns = [
+    { regex: /^(.*?)\s*-\.\s*(.+?)\s*\.->\s*(.*?)$/, strokePattern: "dashed" as const, labelIndex: 2 },
+    { regex: /^(.*?)\s*-\.->\s*\|([^|]+)\|\s*(.*?)$/, strokePattern: "dashed" as const, labelIndex: 2 },
+    { regex: /^(.*?)\s*-\.->\s*(.*?)$/, strokePattern: "dashed" as const, labelIndex: undefined },
+    { regex: /^(.*?)\s*-->\s*\|([^|]+)\|\s*(.*?)$/, strokePattern: "solid" as const, labelIndex: 2 },
+    { regex: /^(.*?)\s*--\s*(.+?)\s*-->\s*(.*?)$/, strokePattern: "solid" as const, labelIndex: 2 },
+    { regex: /^(.*?)\s*-->\s*(.*?)$/, strokePattern: "solid" as const, labelIndex: undefined },
+  ];
+
+  for (const pattern of patterns) {
+    const matched = line.match(pattern.regex);
+    if (!matched) {
+      continue;
+    }
+
+    const fromToken = parseEndpointToken(matched[1].trim());
+    const toToken = parseEndpointToken(matched[3]?.trim?.() ?? matched[2].trim());
+    if (!fromToken || !toToken) {
+      return null;
+    }
+
+    const label = pattern.labelIndex === undefined ? undefined : matched[pattern.labelIndex]?.trim();
+    return {
+      from: fromToken,
+      to: toToken,
+      label,
+      strokePattern: pattern.strokePattern,
+    };
   }
 
-  const fromToken = parseEndpointToken(matched[1].trim());
-  const toToken = parseEndpointToken(matched[3].trim());
-  if (!fromToken || !toToken) {
-    return null;
-  }
-
-  return {
-    from: fromToken,
-    to: toToken,
-    label: matched[2]?.trim(),
-  };
+  return null;
 }
 
 function parseEndpointToken(token: string): EndpointToken | null {
-  const match = token.match(/^([A-Za-z_][A-Za-z0-9_-]*)(?:\((.*)\)|\[(.*)\]|\{(.*)\})?$/);
-  if (!match) {
+  const idMatch = token.match(/^([A-Za-z_][A-Za-z0-9_-]*)(.*)$/);
+  if (!idMatch) {
     return null;
   }
 
-  if (match[2] !== undefined) {
-    return { id: match[1], shape: "round", label: stripWrapping(match[2].trim()) };
-  }
-  if (match[3] !== undefined) {
-    return { id: match[1], shape: "rect", label: stripWrapping(match[3].trim()) };
-  }
-  if (match[4] !== undefined) {
-    return { id: match[1], shape: "decision", label: stripWrapping(match[4].trim()) };
+  const id = idMatch[1];
+  const suffix = idMatch[2].trim();
+  if (!suffix) {
+    return { id };
   }
 
-  return { id: match[1] };
+  const shapePatterns = [
+    { regex: /^\(\((.*)\)\)$/, shape: "circle" as const },
+    { regex: /^\(\[(.*)\]\)$/, shape: "stadium" as const },
+    { regex: /^\((.*)\)$/, shape: "round" as const },
+    { regex: /^\[(.*)\]$/, shape: "rect" as const },
+    { regex: /^\{(.*)\}$/, shape: "decision" as const },
+  ];
+
+  for (const pattern of shapePatterns) {
+    const matched = suffix.match(pattern.regex);
+    if (!matched) {
+      continue;
+    }
+
+    return {
+      id,
+      shape: pattern.shape,
+      label: stripWrapping(matched[1].trim()),
+    };
+  }
+
+  return null;
 }
 
 function ensureNodeFromToken(
@@ -405,9 +440,15 @@ function getOrCreateNode(
   return next;
 }
 
-function mapShape(shape: "round" | "rect" | "decision", label: string): DiagramNodeType {
+function mapShape(shape: "circle" | "stadium" | "round" | "rect" | "decision", label: string): DiagramNodeType {
   if (shape === "decision") {
     return "decision";
+  }
+  if (shape === "circle") {
+    return "start";
+  }
+  if (shape === "stadium") {
+    return "terminator";
   }
   if (shape === "round") {
     if (/(结束|终止|完成|END|STOP|DONE)/i.test(label)) {
@@ -496,4 +537,12 @@ function unique<T>(items: T[]): T[] {
 
 function toArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
+}
+
+function looksLikeEdgeStatement(line: string): boolean {
+  return /-->|-\.->|-\.\s+.+\s+\.->|---|==>/.test(line);
+}
+
+function countSupportedEdgeOperators(line: string): number {
+  return (line.match(/-\.->|-\.\s+.+?\s+\.->|-->/g) || []).length;
 }

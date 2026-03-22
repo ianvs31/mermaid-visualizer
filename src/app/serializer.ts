@@ -24,8 +24,7 @@ export function serializeMermaidFlowchartV2(model: DiagramModel): string {
   emitScope(lines, undefined, 1, groupsByParent, nodesByParent);
 
   for (const edge of model.edges) {
-    const labelPart = edge.label?.trim() ? `|${escapeMermaid(edge.label)}| ` : "";
-    lines.push(`  ${edge.from} -->${labelPart}${edge.to}`);
+    lines.push(`  ${serializeEdge(edge)}`);
   }
 
   for (const node of model.nodes) {
@@ -99,13 +98,30 @@ function shapeOf(type: DiagramNodeType, label: string): string {
   if (type === "decision") {
     return `{${label}}`;
   }
-  if (type === "start" || type === "terminator") {
-    return `(${label})`;
+  if (type === "start") {
+    return `((${label}))`;
+  }
+  if (type === "terminator") {
+    return `([${label}])`;
   }
   if (type === "custom") {
     return `[${label}]`;
   }
   return `[${label}]`;
+}
+
+function serializeEdge(edge: DiagramModel["edges"][number]): string {
+  const label = edge.label?.trim() ? escapeMermaid(edge.label) : "";
+  if (edge.strokePattern === "dashed") {
+    if (label) {
+      return `${edge.from} -. ${label} .-> ${edge.to}`;
+    }
+    return `${edge.from} -.-> ${edge.to}`;
+  }
+  if (label) {
+    return `${edge.from} -->|${label}| ${edge.to}`;
+  }
+  return `${edge.from} --> ${edge.to}`;
 }
 
 function serializeNodeLabel(label: string): string {

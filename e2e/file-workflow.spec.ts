@@ -17,7 +17,7 @@ test.describe("file workflow", () => {
 
     const mermaidText = await readFile(savedPath, "utf8");
     expect(mermaidText).toContain("```mermaid");
-    expect(mermaidText).toContain("N1(开始)");
+    expect(mermaidText).toContain("N1((开始))");
 
     await page.getByRole("button", { name: "新建图表" }).click();
     await expect(page.locator("textarea.code-box")).toHaveValue("flowchart LR");
@@ -27,7 +27,7 @@ test.describe("file workflow", () => {
     const chooser = await chooserPromise;
     await chooser.setFiles(savedPath);
 
-    await expect(page.locator("textarea.code-box")).toContainText("N1(开始)");
+    await expect(page.locator("textarea.code-box")).toContainText("N1((开始))");
     await expect(page.locator(".react-flow__node")).toHaveCount(1);
   });
 });

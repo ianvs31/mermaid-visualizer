@@ -13,7 +13,7 @@ function baseModel(): DiagramModel {
       { id: "N2", type: "process", label: "B", x: 240, y: 0, width: 100, height: 60 },
       { id: "N3", type: "process", label: "C", x: 0, y: 220, width: 100, height: 60, parentGroupId: "G1" },
     ],
-    edges: [{ id: "E1", from: "N1", to: "N2", label: "" }],
+    edges: [{ id: "E1", from: "N1", to: "N2", label: "", strokePattern: "solid" }],
   };
 }
 

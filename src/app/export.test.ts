@@ -42,7 +42,7 @@ const model: DiagramModel = {
       },
     },
   ],
-  edges: [{ id: "E1", from: "N1", to: "N1", label: "loop" }],
+  edges: [{ id: "E1", from: "N1", to: "N1", label: "loop", strokePattern: "solid" }],
 };
 
 describe("export helpers", () => {

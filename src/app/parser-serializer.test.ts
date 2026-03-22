@@ -3,6 +3,35 @@ import { parseMermaidFlowchartV2 } from "./parser";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 
 describe("parseMermaidFlowchartV2", () => {
+  it("parses canonical start and terminator shapes", () => {
+    const source = `flowchart LR
+A((开始))
+B([结束])
+A --> B`;
+
+    const result = parseMermaidFlowchartV2(source);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.model.nodes.find((node) => node.id === "A")?.type).toBe("start");
+    expect(result.model.nodes.find((node) => node.id === "B")?.type).toBe("terminator");
+  });
+
+  it("parses dashed edges and preserves dashed labels", () => {
+    const source = `flowchart LR
+A((开始)) -. 虚线说明 .-> B([结束])`;
+
+    const result = parseMermaidFlowchartV2(source);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.model.edges).toHaveLength(1);
+    expect(result.model.edges[0]).toMatchObject({
+      from: "A",
+      to: "B",
+      label: "虚线说明",
+      strokePattern: "dashed",
+    });
+  });
+
   it("parses subgraph, styles, classes and lane metadata", () => {
     const source = `flowchart LR
 %% editor:lane G1 horizontal 1
@@ -92,6 +121,25 @@ N1 --> N2`;
     expect(reparsed.model.groups.some((group) => group.id === "G1")).toBe(true);
     expect(reparsed.model.nodes.some((node) => node.id === "N2" && node.type === "decision")).toBe(true);
     expect(reparsed.model.edges.some((edge) => edge.from === "N1" && edge.to === "N2")).toBe(true);
+  });
+
+  it("round-trips canonical node shapes and dashed labeled edges", () => {
+    const source = `flowchart LR
+A((开始)) -. 虚线说明 .-> B([结束])`;
+
+    const parsed = parseMermaidFlowchartV2(source);
+    const out = serializeMermaidFlowchartV2(parsed.model);
+    const reparsed = parseMermaidFlowchartV2(out);
+
+    expect(out).toContain("A((开始))");
+    expect(out).toContain("B([结束])");
+    expect(out).toContain("A -. 虚线说明 .-> B");
+    expect(reparsed.model.nodes.find((node) => node.id === "A")?.type).toBe("start");
+    expect(reparsed.model.nodes.find((node) => node.id === "B")?.type).toBe("terminator");
+    expect(reparsed.model.edges[0]).toMatchObject({
+      label: "虚线说明",
+      strokePattern: "dashed",
+    });
   });
 
   it("round-trips empty labels through editor metadata", () => {

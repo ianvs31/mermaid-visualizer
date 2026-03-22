@@ -29,6 +29,28 @@ describe("draft persistence", () => {
     expect(loadDraftSnapshot()).toBeNull();
   });
 
+  it("defaults missing edge strokePattern to solid for backward compatibility", () => {
+    localStorage.setItem(
+      "mv:draft",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-03-21T10:00:00.000Z",
+        code: "flowchart LR\nA-->B",
+        codeDirty: false,
+        model: {
+          version: 2,
+          direction: "LR",
+          nodes: [],
+          edges: [{ id: "E1", from: "A", to: "B", label: "" }],
+          groups: [],
+          rawPassthroughStatements: [],
+        },
+      }),
+    );
+
+    expect(loadDraftSnapshot()?.model.edges[0].strokePattern).toBe("solid");
+  });
+
   it("returns null for parseable snapshots without a complete model", () => {
     localStorage.setItem(
       "mv:draft",

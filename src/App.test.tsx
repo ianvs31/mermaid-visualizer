@@ -52,7 +52,7 @@ describe("App", () => {
         { id: "R1", type: "start" as const, label: "恢复开始", x: 80, y: 120, width: 130, height: 66 },
         { id: "R2", type: "process" as const, label: "恢复处理", x: 280, y: 120, width: 148, height: 72 },
       ],
-      edges: [{ id: "RE1", from: "R1", to: "R2", label: "" }],
+      edges: [{ id: "RE1", from: "R1", to: "R2", label: "", strokePattern: "solid" }],
     };
 
     localStorage.setItem(
@@ -93,7 +93,7 @@ describe("App", () => {
 
     await waitFor(() => {
       const draft = JSON.parse(localStorage.getItem("mv:draft") ?? "{}");
-      expect(draft.code).toContain("N1(启动)");
+      expect(draft.code).toContain("N1((启动))");
       expect(draft.codeDirty).toBe(false);
       expect(draft.version).toBe(1);
     });
@@ -191,7 +191,7 @@ describe("App", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(useEditorStore.getState().code).toContain("N1(启动)");
+      expect(useEditorStore.getState().code).toContain("N1((启动))");
     });
   }, 15000);
 
@@ -217,7 +217,7 @@ describe("App", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(useEditorStore.getState().code).toContain("N1(中文开始)");
+      expect(useEditorStore.getState().code).toContain("N1((中文开始))");
     });
   }, 15000);
 
@@ -325,7 +325,7 @@ describe("App", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(useEditorStore.getState().code).toContain("N1(启动节点)");
+      expect(useEditorStore.getState().code).toContain("N1((启动节点))");
     });
   }, 15000);
 

@@ -10,7 +10,7 @@ test.describe("editor smoke flow", () => {
     await page.getByRole("button", { name: "判断" }).click();
 
     await expect(page.locator(".react-flow__node")).toHaveCount(3);
-    await expect(page.locator("textarea.code-box")).toContainText("N1(开始)");
+    await expect(page.locator("textarea.code-box")).toContainText("N1((开始))");
     await expect(page.locator("textarea.code-box")).toContainText("N2[处理步骤]");
     await expect(page.locator("textarea.code-box")).toContainText("N3{是否通过?}");
 

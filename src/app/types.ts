@@ -52,6 +52,7 @@ export interface DiagramEdge {
   from: string;
   to: string;
   label?: string;
+  strokePattern: StrokePattern;
   sourceHandle?: EdgeHandlePosition;
   targetHandle?: EdgeHandlePosition;
   classNames?: string[];

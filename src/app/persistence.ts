@@ -40,7 +40,10 @@ export function loadDraftSnapshot(): DraftSnapshotV1 | null {
       return null;
     }
 
-    return parsed as DraftSnapshotV1;
+    return {
+      ...(parsed as DraftSnapshotV1),
+      model: normalizeDraftModel(parsed.model),
+    };
   } catch {
     return null;
   }
@@ -95,6 +98,7 @@ function isDiagramEdgeLike(edge: unknown): boolean {
     typeof edge.from === "string" &&
     typeof edge.to === "string" &&
     isOptionalString(edge.label) &&
+    isOptionalStrokePattern(edge.strokePattern) &&
     isOptionalEdgeHandle(edge.sourceHandle) &&
     isOptionalEdgeHandle(edge.targetHandle) &&
     isOptionalStringArray(edge.classNames) &&
@@ -228,6 +232,20 @@ function isFillMode(value: unknown): value is "solid" | "transparent" | "none" {
 
 function isStrokePattern(value: unknown): value is "solid" | "dashed" {
   return typeof value === "string" && ALLOWED_STROKE_PATTERNS.has(value);
+}
+
+function isOptionalStrokePattern(value: unknown): value is "solid" | "dashed" | undefined {
+  return value === undefined || isStrokePattern(value);
+}
+
+function normalizeDraftModel(model: DraftSnapshotV1["model"]): DraftSnapshotV1["model"] {
+  return {
+    ...model,
+    edges: model.edges.map((edge) => ({
+      ...edge,
+      strokePattern: edge.strokePattern ?? "solid",
+    })),
+  };
 }
 
 export function saveDraftSnapshot(snapshot: { code: string; codeDirty: boolean; model: DiagramModel }): void {

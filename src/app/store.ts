@@ -905,7 +905,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const nextId = nextEdgeId(state.model.edges);
     const model = {
       ...state.model,
-      edges: [...state.model.edges, { id: nextId, from, to, label, sourceHandle, targetHandle }],
+      edges: [
+        ...state.model.edges,
+        { id: nextId, from, to, label, strokePattern: "solid", sourceHandle, targetHandle },
+      ],
     };
 
     set({
@@ -1465,12 +1468,12 @@ function createSampleModel(): DiagramModel {
       { id: "N6", type: "terminator", label: "结束", x: 730, y: 350, parentGroupId: "G2", width: 130, height: 66 },
     ],
     edges: [
-      { id: "E1", from: "N1", to: "N2", label: "" },
-      { id: "E2", from: "N2", to: "N3", label: "" },
-      { id: "E3", from: "N3", to: "N4", label: "是" },
-      { id: "E4", from: "N3", to: "N5", label: "否" },
-      { id: "E5", from: "N4", to: "N6", label: "" },
-      { id: "E6", from: "N5", to: "N6", label: "" },
+      { id: "E1", from: "N1", to: "N2", label: "", strokePattern: "solid" },
+      { id: "E2", from: "N2", to: "N3", label: "", strokePattern: "solid" },
+      { id: "E3", from: "N3", to: "N4", label: "是", strokePattern: "solid" },
+      { id: "E4", from: "N3", to: "N5", label: "否", strokePattern: "solid" },
+      { id: "E5", from: "N4", to: "N6", label: "", strokePattern: "solid" },
+      { id: "E6", from: "N5", to: "N6", label: "", strokePattern: "solid" },
     ],
   };
 }

@@ -14,7 +14,7 @@ function createModel(): DiagramModel {
       { id: "N1", type: "start", label: "开始", x: 80, y: 120, width: 130, height: 66 },
       { id: "N2", type: "process", label: "处理", x: 280, y: 120, width: 148, height: 72 },
     ],
-    edges: [{ id: "E1", from: "N1", to: "N2", label: "" }],
+    edges: [{ id: "E1", from: "N1", to: "N2", label: "", strokePattern: "solid" }],
   };
 }
 
@@ -131,7 +131,7 @@ describe("editor store shortcuts state", () => {
     const next = useEditorStore.getState();
     expect(next.code).toContain("subgraph G1[执行泳道]");
     expect(next.code).toContain("%% editor:lane G1 horizontal 1");
-    expect(next.code).toContain("N1(开始)");
+    expect(next.code).toContain("N1((开始))");
   });
 
   it("clears node parent when dragged out of a swimlane", () => {
@@ -144,7 +144,7 @@ describe("editor store shortcuts state", () => {
 
     const next = useEditorStore.getState();
     expect(next.model.nodes.find((node) => node.id === "N1")?.parentGroupId).toBeUndefined();
-    expect(next.code).toMatch(/subgraph G1\[业务侧\][\s\S]*end[\s\S]*N1\(开始\)/);
+    expect(next.code).toMatch(/subgraph G1\[业务侧\][\s\S]*end[\s\S]*N1\(\(开始\)\)/);
   });
 
   it("toggles collapse state for a selected group", () => {
@@ -236,7 +236,7 @@ describe("editor store shortcuts state", () => {
         { id: "R1", type: "start", label: "恢复开始", x: 80, y: 120, width: 130, height: 66 },
         { id: "R2", type: "process", label: "恢复处理", x: 280, y: 120, width: 148, height: 72 },
       ],
-      edges: [{ id: "RE1", from: "R1", to: "R2", label: "" }],
+      edges: [{ id: "RE1", from: "R1", to: "R2", label: "", strokePattern: "solid" }],
     };
 
     localStorage.setItem(
@@ -309,7 +309,7 @@ describe("editor store shortcuts state", () => {
         { id: "R1", type: "start", label: "恢复开始", x: 80, y: 120, width: 130, height: 66 },
         { id: "R2", type: "process", label: "恢复处理", x: 280, y: 120, width: 148, height: 72 },
       ],
-      edges: [{ id: "RE1", from: "R1", to: "R2", label: "" }],
+      edges: [{ id: "RE1", from: "R1", to: "R2", label: "", strokePattern: "solid" }],
     };
 
     localStorage.setItem(

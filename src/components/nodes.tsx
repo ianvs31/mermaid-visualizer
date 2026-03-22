@@ -91,9 +91,8 @@ function buildNodeSurfaceStyle(
   paint: DerivedNodePaint,
   quickConnectEnabled: boolean,
 ): NodeSurfaceStyle {
-  const isStart = type === "start";
-  const isTerminator = type === "terminator";
-  const borderRadius = isStart || isTerminator ? "999px" : `${paint.borderRadius}px`;
+  const isRoundedTerminal = type === "start" || type === "terminator";
+  const borderRadius = isRoundedTerminal ? "999px" : `${paint.borderRadius}px`;
   return {
     backgroundColor: paint.fill,
     borderColor: paint.stroke,
@@ -101,7 +100,6 @@ function buildNodeSurfaceStyle(
     borderStyle: paint.strokeDasharray ? "dashed" : "solid",
     color: paint.color,
     borderRadius,
-    ...(isStart ? { aspectRatio: "1 / 1" } : {}),
     "--diagram-node-stroke": paint.stroke,
     "--diagram-node-fill": paint.fill,
     "--diagram-node-text": paint.color,

@@ -111,7 +111,7 @@ describe("FlowNode", () => {
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("renders start nodes as circles regardless of rounded corner paint", () => {
+  it("renders start nodes as stadiums instead of circles", () => {
     render(
       <ReactFlowProvider>
         <FlowNode
@@ -144,7 +144,7 @@ describe("FlowNode", () => {
     const nodeSurface = screen.getByText("开始").closest(".diagram-node") as HTMLElement;
     expect(nodeSurface).not.toBeNull();
     expect(nodeSurface.style.borderRadius).toBe("999px");
-    expect(nodeSurface.style.aspectRatio).toBe("1 / 1");
+    expect(nodeSurface.style.aspectRatio).toBe("");
   });
 
   it("renders terminator nodes as stadiums instead of generic rounded rectangles", () => {

@@ -1,7 +1,7 @@
 import type { DiagramNode, DiagramNodeType } from "./types";
 
-export const START_NODE_SIZE = { width: 84, height: 84 } as const;
 export const TERMINATOR_NODE_SIZE = { width: 130, height: 66 } as const;
+export const START_NODE_SIZE = TERMINATOR_NODE_SIZE;
 export const PROCESS_NODE_SIZE = { width: 148, height: 72 } as const;
 export const DECISION_NODE_SIZE = { width: 132, height: 132 } as const;
 

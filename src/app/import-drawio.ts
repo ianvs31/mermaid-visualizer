@@ -216,6 +216,7 @@ function graphModelToModel(graphModel: Element, warnings: string[]): DiagramMode
       from: sourceId,
       to: targetId,
       label: sanitizeLabel(cell.value),
+      strokePattern: cell.styleMap.dashed === "1" ? "dashed" : "solid",
     });
     edgeCounter += 1;
   }

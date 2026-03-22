@@ -55,7 +55,9 @@ export function buildDrawioXml(model: DiagramModel): string {
     const shapeStyle =
       node.type === "decision"
         ? "rhombus;"
-        : node.type === "start" || node.type === "terminator"
+        : node.type === "start"
+          ? "ellipse;"
+          : node.type === "terminator"
           ? "rounded=1;arcSize=50;"
           : "rounded=0;";
 
@@ -69,7 +71,7 @@ export function buildDrawioXml(model: DiagramModel): string {
   }
 
   for (const edge of model.edges) {
-    const dashed = edge.style?.["stroke-dasharray"] ? "dashed=1;" : "";
+    const dashed = edge.strokePattern === "dashed" ? "dashed=1;" : "";
     cells.push(
       `<mxCell id="${edge.id}" value="${escapeXml(edge.label || "")}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;${dashed}" edge="1" parent="1" source="${edge.from}" target="${edge.to}"><mxGeometry relative="1" as="geometry" /></mxCell>`,
     );

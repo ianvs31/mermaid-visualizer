@@ -51,9 +51,27 @@ describe("importDrawioXml", () => {
     expect(result.model.groups[0].id).toBe("G1");
     expect(result.model.nodes[0].id).toBe("N1");
     expect(result.model.nodes[1].id).toBe("N2");
+    expect(result.model.nodes[0].type).toBe("start");
     expect(result.model.edges[0].id).toBe("E1");
+    expect(result.model.edges[0].strokePattern).toBe("dashed");
+    expect(result.model.edges[0].label).toBe("提交");
     expect(result.mermaid).toContain("flowchart LR");
     expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("imports rounded terminal-style nodes as terminators", () => {
+    const terminalXml = `<mxGraphModel><root>
+      <mxCell id="0" />
+      <mxCell id="1" parent="0" />
+      <mxCell id="node-end" value="结束" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxGeometry x="120" y="120" width="130" height="66" as="geometry" />
+      </mxCell>
+    </root></mxGraphModel>`;
+
+    const result = importDrawioXml(terminalXml);
+
+    expect(result.model.nodes).toHaveLength(1);
+    expect(result.model.nodes[0].type).toBe("terminator");
   });
 
   it("imports mxfile wrapper with direct mxGraphModel child", () => {

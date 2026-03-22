@@ -1098,6 +1098,22 @@ button.full {
   stroke-width: 3;
 }
 
+.react-flow__edge-textwrapper {
+  filter: drop-shadow(0 4px 10px rgba(15, 23, 42, 0.08));
+}
+
+.react-flow__edge-text {
+  fill: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.react-flow__edge-textbg {
+  fill: rgba(255, 255, 255, 0.94);
+  stroke: rgba(15, 23, 42, 0.1);
+  stroke-width: 1;
+}
+
 .diagram-quick-connect {
   position: absolute;
   width: 36px;

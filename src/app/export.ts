@@ -1,4 +1,5 @@
 import { deriveNodePaint, resolveNodeAppearance } from "./appearance";
+import { getDefaultNodeSize } from "./node-geometry";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 import type { DiagramModel } from "./types";
 
@@ -42,8 +43,9 @@ export function buildDrawioXml(model: DiagramModel): string {
   for (const node of model.nodes) {
     const appearance = resolveNodeAppearance(node);
     const paint = deriveNodePaint(appearance);
-    const width = node.width ?? (node.type === "decision" ? 132 : node.type === "start" || node.type === "terminator" ? 130 : 148);
-    const height = node.height ?? (node.type === "decision" ? 132 : 72);
+    const fallbackSize = getDefaultNodeSize(node.type);
+    const width = node.width ?? fallbackSize.width;
+    const height = node.height ?? fallbackSize.height;
     const parent = node.parentGroupId ?? "1";
     const x = node.parentGroupId
       ? node.x - (model.groups.find((group) => group.id === node.parentGroupId)?.x ?? 0)

@@ -110,4 +110,76 @@ describe("FlowNode", () => {
 
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
+
+  it("renders start nodes as circles regardless of rounded corner paint", () => {
+    render(
+      <ReactFlowProvider>
+        <FlowNode
+          {...({
+            id: "N1",
+            data: {
+              nodeId: "N1",
+              label: "开始",
+              type: "start",
+              quickConnectEnabled: false,
+              paint: {
+                fill: "#ffffff",
+                stroke: "#344054",
+                color: "#111827",
+                strokeWidth: 2,
+                borderRadius: 10,
+              },
+            },
+            selected: false,
+            dragging: false,
+            zIndex: 1,
+            isConnectable: true,
+            positionAbsoluteX: 0,
+            positionAbsoluteY: 0,
+          } as any)}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const nodeSurface = screen.getByText("开始").closest(".diagram-node") as HTMLElement;
+    expect(nodeSurface).not.toBeNull();
+    expect(nodeSurface.style.borderRadius).toBe("999px");
+    expect(nodeSurface.style.aspectRatio).toBe("1 / 1");
+  });
+
+  it("renders terminator nodes as stadiums instead of generic rounded rectangles", () => {
+    render(
+      <ReactFlowProvider>
+        <FlowNode
+          {...({
+            id: "N1",
+            data: {
+              nodeId: "N1",
+              label: "结束",
+              type: "terminator",
+              quickConnectEnabled: false,
+              paint: {
+                fill: "#ffffff",
+                stroke: "#344054",
+                color: "#111827",
+                strokeWidth: 2,
+                borderRadius: 10,
+              },
+            },
+            selected: false,
+            dragging: false,
+            zIndex: 1,
+            isConnectable: true,
+            positionAbsoluteX: 0,
+            positionAbsoluteY: 0,
+          } as any)}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const nodeSurface = screen.getByText("结束").closest(".diagram-node") as HTMLElement;
+    expect(nodeSurface).not.toBeNull();
+    expect(nodeSurface.style.borderRadius).toBe("999px");
+    expect(nodeSurface.style.aspectRatio).toBe("");
+  });
 });

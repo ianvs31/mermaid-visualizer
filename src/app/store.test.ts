@@ -155,6 +155,17 @@ describe("editor store shortcuts state", () => {
     expect(useEditorStore.getState().model.groups[0].collapsed).toBe(true);
   });
 
+  it("updates edge stroke pattern and serializes dashed Mermaid syntax", () => {
+    resetStore(createModel());
+
+    useEditorStore.getState().setSelection([], ["E1"], []);
+    useEditorStore.getState().updateEdgeStrokePattern("E1", "dashed");
+
+    const next = useEditorStore.getState();
+    expect(next.model.edges[0].strokePattern).toBe("dashed");
+    expect(next.code).toContain("N1 -.-> N2");
+  });
+
   it("moves selected nodes into the selected group", () => {
     resetStore(createGroupedModel());
     const store = useEditorStore.getState();

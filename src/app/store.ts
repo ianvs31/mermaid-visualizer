@@ -3,6 +3,7 @@ import { resolveNodeAppearance, stripPaintStyle } from "./appearance";
 import { buildExportText, exportMimeTypeFor, type ExportFormat } from "./export";
 import { defaultFilenameFor, downloadTextFile } from "./file-io";
 import { applyElkLayout } from "./layout";
+import { getDefaultNodeSize } from "./node-geometry";
 import { loadDraftSnapshot } from "./persistence";
 import { parseMermaidFlowchartV2 } from "./parser";
 import { serializeMermaidFlowchartV2 } from "./serializer";
@@ -128,6 +129,7 @@ interface EditorState {
   commitNodeLabel: (nodeId: string, label: string) => void;
   commitGroupTitle: (groupId: string, title: string) => void;
   updateEdgeLabel: (edgeId: string, label: string) => void;
+  updateEdgeStrokePattern: (edgeId: string, strokePattern: DiagramEdge["strokePattern"]) => void;
   clear: () => void;
   loadSample: (options?: { recordHistory?: boolean }) => void;
   autoLayout: () => Promise<void>;
@@ -651,6 +653,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const nextId = nextNodeId(state.model.nodes);
     const targetGroupId = parentGroupId ?? state.selectedGroupIds.at(0);
     const parent = targetGroupId ? state.model.groups.find((group) => group.id === targetGroupId) : undefined;
+    const defaultSize = getDefaultNodeSize(type);
 
     const node: DiagramNode = {
       id: nextId,
@@ -658,8 +661,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: defaultNodeLabel(type),
       x: position?.x ?? (parent ? parent.x + 40 : 120),
       y: position?.y ?? (parent ? parent.y + 80 : 120),
-      width: type === "decision" ? 132 : 148,
-      height: type === "decision" ? 132 : 72,
+      width: defaultSize.width,
+      height: defaultSize.height,
       parentGroupId: parent?.id,
     };
 
@@ -903,7 +906,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
 
     const nextId = nextEdgeId(state.model.edges);
-    const model = {
+    const model: DiagramModel = {
       ...state.model,
       edges: [
         ...state.model.edges,
@@ -1069,6 +1072,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     const edges = state.model.edges.map((edge) => (edge.id === edgeId ? { ...edge, label } : edge));
+    set({ ...pushHistory(state), model: { ...state.model, edges }, toastTick: Date.now() });
+    get().syncCodeFromModel();
+  },
+
+  updateEdgeStrokePattern: (edgeId, strokePattern) => {
+    const state = get();
+    const current = state.model.edges.find((edge) => edge.id === edgeId);
+    if (!current || current.strokePattern === strokePattern) {
+      return;
+    }
+    const edges = state.model.edges.map((edge) => (edge.id === edgeId ? { ...edge, strokePattern } : edge));
     set({ ...pushHistory(state), model: { ...state.model, edges }, toastTick: Date.now() });
     get().syncCodeFromModel();
   },
@@ -1460,12 +1474,12 @@ function createSampleModel(): DiagramModel {
       },
     ],
     nodes: [
-      { id: "N1", type: "start", label: "开始", x: 90, y: 115, parentGroupId: "G1", width: 130, height: 66 },
-      { id: "N2", type: "process", label: "提交申请", x: 280, y: 115, parentGroupId: "G1", width: 148, height: 72 },
-      { id: "N3", type: "decision", label: "审批通过?", x: 500, y: 80, parentGroupId: "G1", width: 132, height: 132 },
-      { id: "N4", type: "process", label: "执行任务", x: 540, y: 350, parentGroupId: "G2", width: 148, height: 72 },
-      { id: "N5", type: "process", label: "驳回并通知", x: 290, y: 350, parentGroupId: "G2", width: 148, height: 72 },
-      { id: "N6", type: "terminator", label: "结束", x: 730, y: 350, parentGroupId: "G2", width: 130, height: 66 },
+      { id: "N1", type: "start", label: "开始", x: 90, y: 106, parentGroupId: "G1", ...getDefaultNodeSize("start") },
+      { id: "N2", type: "process", label: "提交申请", x: 280, y: 115, parentGroupId: "G1", ...getDefaultNodeSize("process") },
+      { id: "N3", type: "decision", label: "审批通过?", x: 500, y: 80, parentGroupId: "G1", ...getDefaultNodeSize("decision") },
+      { id: "N4", type: "process", label: "执行任务", x: 540, y: 350, parentGroupId: "G2", ...getDefaultNodeSize("process") },
+      { id: "N5", type: "process", label: "驳回并通知", x: 290, y: 350, parentGroupId: "G2", ...getDefaultNodeSize("process") },
+      { id: "N6", type: "terminator", label: "结束", x: 730, y: 350, parentGroupId: "G2", ...getDefaultNodeSize("terminator") },
     ],
     edges: [
       { id: "E1", from: "N1", to: "N2", label: "", strokePattern: "solid" },

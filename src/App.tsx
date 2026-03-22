@@ -19,7 +19,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { deriveNodePaint, resolveNodeAppearance } from "./app/appearance";
 import { pickAutoHandle, validateConnection } from "./app/connection";
 import { copyExportToClipboard, type ExportFormat } from "./app/export";
+import { buildHiddenGroupIds, isGroupVisible } from "./app/group-visibility";
 import { ImportDrawioError, importDrawioXml } from "./app/import-drawio";
+import { getDefaultNodeSize } from "./app/node-geometry";
 import { getPaletteItem, type PaletteItemId } from "./app/palette";
 import { QUICK_CONNECT_EVENT, type QuickConnectEventDetail } from "./app/quick-connect-events";
 import { applyFlowNodePosition, modelToFlowElements } from "./app/reactflow-mapper";
@@ -53,6 +55,7 @@ import type {
 } from "./app/types";
 import { CanvasToolbar } from "./components/CanvasToolbar";
 import { ContextToolbar } from "./components/ContextToolbar";
+import { EdgeContextToolbar } from "./components/EdgeContextToolbar";
 import { InlineTextOverlay, type InlineArmedTarget, type InlineOverlayRect } from "./components/InlineTextOverlay";
 import { FlowNode, GroupNode } from "./components/nodes";
 import { PaletteDragPreview } from "./components/PaletteDragPreview";
@@ -118,6 +121,7 @@ function EditorApp() {
     commitNodeLabel,
     commitGroupTitle,
     updateEdgeLabel,
+    updateEdgeStrokePattern,
     setSelection,
     deleteSelection,
     autoLayout,
@@ -256,6 +260,14 @@ function EditorApp() {
     return model.groups.find((group) => group.id === selectedGroupIds[0]) ?? null;
   }, [model.groups, selectedGroupIds]);
 
+  const selectedEdge = useMemo(() => {
+    if (selectedEdgeIds.length !== 1 || selectedNodeIds.length > 0 || selectedGroupIds.length > 0) {
+      return null;
+    }
+
+    return model.edges.find((edge) => edge.id === selectedEdgeIds[0]) ?? null;
+  }, [model.edges, selectedEdgeIds, selectedGroupIds.length, selectedNodeIds.length]);
+
   const selectedNodeAppearance = useMemo<NodeAppearance | null>(
     () => (selectedNode ? resolveNodeAppearance(selectedNode) : null),
     [selectedNode],
@@ -325,6 +337,30 @@ function EditorApp() {
       y: rect.y - 18,
     };
   }, [canAssignSelectionToGroup, selectedGroup, viewport]);
+
+  const edgeContextAnchor = useMemo(() => {
+    if (!selectedEdge) {
+      return null;
+    }
+
+    const sourceNode = model.nodes.find((node) => node.id === selectedEdge.from);
+    const targetNode = model.nodes.find((node) => node.id === selectedEdge.to);
+    if (!sourceNode || !targetNode) {
+      return null;
+    }
+
+    const sourcePoint = getEdgeHandleAnchor(toNodeBox(sourceNode), selectedEdge.sourceHandle ?? "right");
+    const targetPoint = getEdgeHandleAnchor(toNodeBox(targetNode), selectedEdge.targetHandle ?? "left");
+    const midpoint = {
+      x: (sourcePoint.x + targetPoint.x) / 2,
+      y: (sourcePoint.y + targetPoint.y) / 2,
+    };
+
+    return {
+      x: viewport.x + midpoint.x * viewport.zoom,
+      y: viewport.y + midpoint.y * viewport.zoom - 18,
+    };
+  }, [model.nodes, selectedEdge, viewport.x, viewport.y, viewport.zoom]);
 
   const quickCreatePopoverAnchor = useMemo(() => {
     if (!quickCreateSession || !workspaceRef.current) {
@@ -1458,6 +1494,20 @@ function EditorApp() {
           </div>
         ) : null}
 
+        {!isClassicPreset && edgeContextAnchor && selectedEdge && !edgeEditor ? (
+          <EdgeContextToolbar
+            visible
+            x={edgeContextAnchor.x}
+            y={edgeContextAnchor.y}
+            strokePattern={selectedEdge.strokePattern}
+            onEditLabel={() => {
+              endInlineEdit();
+              setEdgeEditor({ edgeId: selectedEdge.id, value: selectedEdge.label || "" });
+            }}
+            onSetStrokePattern={(strokePattern) => updateEdgeStrokePattern(selectedEdge.id, strokePattern)}
+          />
+        ) : null}
+
         <InlineTextOverlay
           session={inlineEditSession}
           targetRect={inlineTargetRect}
@@ -1791,11 +1841,12 @@ function toggleSelectionId(ids: string[], id: string): string[] {
 function findContainingGroupId(node: DragNodeBox, groups: DiagramGroup[]): string | undefined {
   const centerX = node.x + node.width / 2;
   const centerY = node.y + node.height / 2;
+  const hiddenGroupIds = buildHiddenGroupIds(groups);
 
   return groups
     .filter(
       (group) =>
-        !group.collapsed &&
+        isGroupVisible(group, hiddenGroupIds) &&
         centerX >= group.x &&
         centerX <= group.x + group.width &&
         centerY >= group.y + 36 &&
@@ -1895,15 +1946,27 @@ function oppositeHandle(handle: EdgeHandlePosition): EdgeHandlePosition {
 }
 
 function toNodeBox(node: DiagramNode): DragNodeBox {
+  const fallbackSize = getDefaultNodeSize(node.type);
   return {
     id: node.id,
     x: node.x,
     y: node.y,
-    width:
-      node.width ??
-      (node.type === "decision" ? 132 : node.type === "start" || node.type === "terminator" ? 130 : 148),
-    height: node.height ?? (node.type === "decision" ? 132 : 72),
+    width: node.width ?? fallbackSize.width,
+    height: node.height ?? fallbackSize.height,
   };
+}
+
+function getEdgeHandleAnchor(box: DragNodeBox, handle: EdgeHandlePosition): { x: number; y: number } {
+  if (handle === "left") {
+    return { x: box.x, y: box.y + box.height / 2 };
+  }
+  if (handle === "right") {
+    return { x: box.x + box.width, y: box.y + box.height / 2 };
+  }
+  if (handle === "top") {
+    return { x: box.x + box.width / 2, y: box.y };
+  }
+  return { x: box.x + box.width / 2, y: box.y + box.height };
 }
 
 function getBoundingBox(items: Array<Pick<DragNodeBox, "x" | "y" | "width" | "height">>): DragNodeBox {

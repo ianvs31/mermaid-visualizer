@@ -161,7 +161,11 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    const targetNode = await waitFor(() => {
+      const element = container.querySelector('.react-flow__node[data-id="N1"]');
+      expect(element).not.toBeNull();
+      return element;
+    });
     expect(targetNode).not.toBeNull();
 
     fireEvent.click(targetNode!);
@@ -251,6 +255,79 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(useEditorStore.getState().model.groups.find((group) => group.id === "G1")?.collapsed).toBe(true);
+    });
+  }, 15000);
+
+  it("shows lightweight edge controls only for a single selected edge", async () => {
+    render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    act(() => {
+      useEditorStore.getState().setSelection([], ["E1"], []);
+    });
+
+    expect(await screen.findByRole("button", { name: "编辑标签" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "实线" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "虚线" })).toBeInTheDocument();
+
+    act(() => {
+      useEditorStore.getState().setSelection(["N1"], ["E1"], []);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "编辑标签" })).toBeNull();
+    });
+  }, 15000);
+
+  it("edits edge labels from the lightweight edge toolbar", async () => {
+    render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    act(() => {
+      useEditorStore.getState().setSelection([], ["E1"], []);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "编辑标签" }));
+
+    const input = await screen.findByPlaceholderText("连线标签");
+    fireEvent.change(input, { target: { value: "继续处理" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().code).toContain("N1 -->|继续处理| N2");
+    });
+  }, 15000);
+
+  it("toggles selected edges to dashed from the lightweight edge toolbar", async () => {
+    render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    act(() => {
+      useEditorStore.getState().setSelection([], ["E1"], []);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "虚线" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.edges.find((edge) => edge.id === "E1")?.strokePattern).toBe("dashed");
+      expect(useEditorStore.getState().code).toContain("N1 -.-> N2");
+    });
+  }, 15000);
+
+  it("hides swimlane descendants again after collapse, expand, then collapse", async () => {
+    const { container } = render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const collapse = await screen.findByRole("button", { name: "折叠 业务侧" });
+    fireEvent.click(collapse);
+    fireEvent.click(await screen.findByRole("button", { name: "展开 业务侧" }));
+    fireEvent.click(await screen.findByRole("button", { name: "折叠 业务侧" }));
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.groups.find((group) => group.id === "G1")?.collapsed).toBe(true);
+      expect(container.querySelector('.react-flow__node[data-id="N1"]')).toBeNull();
+      expect(container.querySelector('.react-flow__node[data-id="N2"]')).toBeNull();
+      expect(container.querySelector('.react-flow__edge[data-id="E1"]')).toBeNull();
     });
   }, 15000);
 

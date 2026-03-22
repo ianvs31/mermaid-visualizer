@@ -22,10 +22,12 @@ interface GroupNodeData {
   onToggleCollapse?: (groupId: string) => void;
 }
 
+type NodeSurfaceStyle = CSSProperties & Record<`--diagram-node-${string}`, string>;
+
 export function FlowNode({ data, selected }: NodeProps) {
   const typed = data as unknown as FlowNodeData;
   const className = `diagram-node diagram-node--${typed.type}${selected ? " is-selected" : ""}${typed.connectCandidate ? " is-connect-candidate" : ""}`;
-  const style = buildNodeSurfaceStyle(typed.paint, typed.quickConnectEnabled);
+  const style = buildNodeSurfaceStyle(typed.type, typed.paint, typed.quickConnectEnabled);
 
   return (
     <div className={className} style={style} data-quick-connect-enabled={typed.quickConnectEnabled ? "true" : "false"}>
@@ -85,22 +87,27 @@ export function GroupNode({ id, data, selected }: NodeProps) {
 }
 
 function buildNodeSurfaceStyle(
+  type: FlowNodeData["type"],
   paint: DerivedNodePaint,
   quickConnectEnabled: boolean,
-): CSSProperties & Record<string, string> {
+): NodeSurfaceStyle {
+  const isStart = type === "start";
+  const isTerminator = type === "terminator";
+  const borderRadius = isStart || isTerminator ? "999px" : `${paint.borderRadius}px`;
   return {
     backgroundColor: paint.fill,
     borderColor: paint.stroke,
     borderWidth: `${paint.strokeWidth}px`,
     borderStyle: paint.strokeDasharray ? "dashed" : "solid",
     color: paint.color,
-    borderRadius: `${paint.borderRadius}px`,
+    borderRadius,
+    ...(isStart ? { aspectRatio: "1 / 1" } : {}),
     "--diagram-node-stroke": paint.stroke,
     "--diagram-node-fill": paint.fill,
     "--diagram-node-text": paint.color,
     "--diagram-node-stroke-width": `${paint.strokeWidth}px`,
     "--diagram-node-stroke-style": paint.strokeDasharray ? "dashed" : "solid",
-    "--diagram-node-border-radius": `${paint.borderRadius}px`,
+    "--diagram-node-border-radius": borderRadius,
     "--diagram-node-connector-opacity": quickConnectEnabled ? "1" : "0",
   };
 }

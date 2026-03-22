@@ -1,5 +1,7 @@
 import { MarkerType, Position, type Edge, type Node } from "@xyflow/react";
 import { deriveNodePaint, resolveNodeAppearance } from "./appearance";
+import { buildGroupVisibility } from "./group-visibility";
+import { getDefaultNodeSize } from "./node-geometry";
 import type {
   DiagramEdge,
   DiagramGroup,
@@ -25,7 +27,7 @@ export interface FlowMapOptions {
 
 export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions = {}): FlowElementSet {
   const groupMap = new Map(model.groups.map((group) => [group.id, group]));
-  const hiddenGroups = new Set<string>();
+  const visibility = buildGroupVisibility(model);
   const selectedNodeIds = new Set(options.selectedNodeIds || []);
   const selectedEdgeIds = new Set(options.selectedEdgeIds || []);
   const selectedGroupIds = new Set(options.selectedGroupIds || []);
@@ -35,21 +37,13 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
     (options.selectedGroupIds?.length ?? 0) > 0;
   const quickConnectEnabled = options.toolMode === "select" && !hasMixedSelection;
 
-  for (const group of model.groups) {
-    if (!group.collapsed) {
-      continue;
-    }
-    hiddenGroups.add(group.id);
-    for (const child of collectDescendantGroups(group.id, model.groups)) {
-      hiddenGroups.add(child);
-    }
-  }
-
   const nodes: Node[] = [];
 
   for (const group of model.groups) {
     const parent = group.parentGroupId ? groupMap.get(group.parentGroupId) : undefined;
-    const hidden = parent ? hiddenGroups.has(parent.id) : false;
+    const hidden =
+      visibility.hiddenGroupIds.has(group.id) ||
+      (parent ? visibility.hiddenGroupIds.has(parent.id) || visibility.collapsedGroupIds.has(parent.id) : false);
 
     nodes.push({
       id: group.id,
@@ -78,17 +72,14 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
     });
   }
 
-  const hiddenNodes = new Set<string>();
-
   for (const node of model.nodes) {
     const parent = node.parentGroupId ? groupMap.get(node.parentGroupId) : undefined;
-    const hidden = parent ? hiddenGroups.has(parent.id) : false;
-    if (hidden) {
-      hiddenNodes.add(node.id);
-    }
+    const hidden =
+      visibility.hiddenNodeIds.has(node.id) ||
+      (parent ? visibility.hiddenGroupIds.has(parent.id) || visibility.collapsedGroupIds.has(parent.id) : false);
     const size = {
-      width: node.width ?? defaultNodeSize(node.type).width,
-      height: node.height ?? defaultNodeSize(node.type).height,
+      width: node.width ?? getDefaultNodeSize(node.type).width,
+      height: node.height ?? getDefaultNodeSize(node.type).height,
     };
 
     nodes.push({
@@ -156,7 +147,7 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
   }
 
   const edges: Edge[] = model.edges.map((edge) => {
-    const hidden = hiddenNodes.has(edge.from) || hiddenNodes.has(edge.to);
+    const hidden = visibility.hiddenEdgeIds.has(edge.id);
     return edgeToFlow(edge, hidden, selectedEdgeIds.has(edge.id));
   });
 
@@ -194,6 +185,20 @@ function edgeToFlow(edge: DiagramEdge, hidden: boolean, selected: boolean): Edge
     },
     style: {
       strokeWidth: 2,
+      strokeDasharray: edge.strokePattern === "dashed" ? "6 4" : undefined,
+    },
+    labelShowBg: !!edge.label?.trim(),
+    labelBgPadding: [8, 4],
+    labelBgBorderRadius: 999,
+    labelBgStyle: {
+      fill: "rgba(255, 255, 255, 0.92)",
+      stroke: "rgba(15, 23, 42, 0.1)",
+      strokeWidth: 1,
+    },
+    labelStyle: {
+      fill: "#0f172a",
+      fontSize: 12,
+      fontWeight: 600,
     },
     markerEnd: {
       type: MarkerType.ArrowClosed,
@@ -218,28 +223,4 @@ function toRelativePosition(
     x: x - parent.x,
     y: y - parent.y,
   };
-}
-
-function defaultNodeSize(type: DiagramNode["type"]): { width: number; height: number } {
-  if (type === "decision") {
-    return { width: 132, height: 132 };
-  }
-  if (type === "start" || type === "terminator") {
-    return { width: 130, height: 66 };
-  }
-  return { width: 148, height: 72 };
-}
-
-function collectDescendantGroups(groupId: string, groups: DiagramGroup[]): string[] {
-  const descendants: string[] = [];
-  const queue = [groupId];
-
-  while (queue.length) {
-    const current = queue.shift()!;
-    const children = groups.filter((group) => group.parentGroupId === current).map((group) => group.id);
-    descendants.push(...children);
-    queue.push(...children);
-  }
-
-  return descendants;
 }

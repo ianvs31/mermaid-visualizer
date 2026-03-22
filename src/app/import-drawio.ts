@@ -1,4 +1,5 @@
 import { inflateRaw } from "pako";
+import { getDefaultNodeSize } from "./node-geometry";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 import {
   DEFAULT_DIRECTION,
@@ -195,8 +196,8 @@ function graphModelToModel(graphModel: Element, warnings: string[]): DiagramMode
       label: label || nodeIdMap.get(cell.id)!,
       x: absolute.x,
       y: absolute.y,
-      width: positiveOr(cell.geometry.width, defaultNodeSize(type).width),
-      height: positiveOr(cell.geometry.height, defaultNodeSize(type).height),
+      width: positiveOr(cell.geometry.width, getDefaultNodeSize(type).width),
+      height: positiveOr(cell.geometry.height, getDefaultNodeSize(type).height),
       parentGroupId,
     };
   });
@@ -355,16 +356,6 @@ function resolveNodeType(styleMap: Record<string, string>, label: string): Diagr
   }
 
   return "process";
-}
-
-function defaultNodeSize(type: DiagramNodeType): { width: number; height: number } {
-  if (type === "decision") {
-    return { width: 132, height: 132 };
-  }
-  if (type === "start" || type === "terminator") {
-    return { width: 130, height: 66 };
-  }
-  return { width: 148, height: 72 };
 }
 
 function inferDirection(nodes: DiagramNode[], edges: DiagramEdge[]): Direction {

@@ -1,4 +1,5 @@
 import type { DiagramNodeType } from "./types";
+import { DECISION_NODE_SIZE, PROCESS_NODE_SIZE, START_NODE_SIZE } from "./node-geometry";
 
 export type PaletteItemId = "rounded" | "process" | "decision" | "swimlane";
 
@@ -31,7 +32,7 @@ export const PALETTE_ITEMS: PaletteItemDefinition[] = [
     quickCreateEnabled: true,
     toolbarVisible: true,
     createNodeType: "start",
-    defaultSize: { width: 130, height: 66 },
+    defaultSize: START_NODE_SIZE,
   },
   {
     id: "process",
@@ -41,7 +42,7 @@ export const PALETTE_ITEMS: PaletteItemDefinition[] = [
     quickCreateEnabled: true,
     toolbarVisible: true,
     createNodeType: "process",
-    defaultSize: { width: 148, height: 72 },
+    defaultSize: PROCESS_NODE_SIZE,
   },
   {
     id: "decision",
@@ -51,7 +52,7 @@ export const PALETTE_ITEMS: PaletteItemDefinition[] = [
     quickCreateEnabled: true,
     toolbarVisible: true,
     createNodeType: "decision",
-    defaultSize: { width: 132, height: 132 },
+    defaultSize: DECISION_NODE_SIZE,
   },
   {
     id: "swimlane",
@@ -73,4 +74,3 @@ export function getPaletteItem(itemId: PaletteItemId): PaletteItemDefinition {
   }
   return item;
 }
-

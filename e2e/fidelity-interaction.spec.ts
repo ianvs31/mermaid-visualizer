@@ -11,9 +11,9 @@ test.describe("mermaid fidelity interactions", () => {
     await page.reload();
 
     await expect(page.locator("textarea.code-box")).toBeVisible();
-    await expect(page.locator('.react-flow__node[data-id="N1"]')).toHaveCount(1);
+    await expect(page.locator('.react-flow__node[data-model-id="N1"]')).toHaveCount(1);
 
-    await page.locator('.react-flow__edge[data-id="E1"]').evaluate((element) => {
+    await page.locator('.react-flow__edge[data-model-id="E1"]').evaluate((element) => {
       element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     await expect(page.getByRole("button", { name: "编辑标签" })).toBeVisible();
@@ -27,14 +27,14 @@ test.describe("mermaid fidelity interactions", () => {
     await expect(page.locator("textarea.code-box")).toContainText("N1 -. 继续处理 .-> N2");
 
     await page.getByRole("button", { name: "折叠 业务侧" }).click();
-    await expect(page.locator('.react-flow__node[data-id="N1"]')).toHaveCount(0);
+    await expect(page.locator('.react-flow__node[data-model-id="N1"]')).toHaveCount(0);
 
     await page.getByRole("button", { name: "展开 业务侧" }).click();
-    await expect(page.locator('.react-flow__node[data-id="N1"]')).toHaveCount(1);
+    await expect(page.locator('.react-flow__node[data-model-id="N1"]')).toHaveCount(1);
 
     await page.getByRole("button", { name: "折叠 业务侧" }).click();
-    await expect(page.locator('.react-flow__node[data-id="N1"]')).toHaveCount(0);
-    await expect(page.locator('.react-flow__edge[data-id="E1"]')).toHaveCount(0);
+    await expect(page.locator('.react-flow__node[data-model-id="N1"]')).toHaveCount(0);
+    await expect(page.locator('.react-flow__edge[data-model-id="E1"]')).toHaveCount(0);
   });
 
   test("selects an edge through its visible path and opens label editing on double click", async ({ page }) => {
@@ -42,7 +42,7 @@ test.describe("mermaid fidelity interactions", () => {
     await page.evaluate(() => localStorage.clear());
     await page.reload();
 
-    const edgeInteraction = page.locator('.react-flow__edge[data-id="E1"] .react-flow__edge-interaction');
+    const edgeInteraction = page.locator('.react-flow__edge[data-model-id="E1"] .react-flow__edge-interaction');
     await expect(edgeInteraction).toHaveCount(1);
 
     await edgeInteraction.click();

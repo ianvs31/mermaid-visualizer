@@ -102,6 +102,23 @@ export interface EditorMessage {
   text: string;
 }
 
+export type DocumentSyncState = "saved" | "dirty" | "saving";
+
+export interface EditorDocumentSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastOpenedAt: string;
+}
+
+export interface StoredEditorDocumentV1 extends EditorDocumentSummary {
+  version: 1;
+  code: string;
+  codeDirty: boolean;
+  model: DiagramModel;
+}
+
 export interface InteractionState {
   uiPreset: UiPreset;
   toolMode: ToolMode;

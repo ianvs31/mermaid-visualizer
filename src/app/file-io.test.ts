@@ -8,9 +8,9 @@ describe("file I/O helpers", () => {
   });
 
   it("maps export formats to stable download filenames", () => {
-    expect(defaultFilenameFor("editor-json")).toBe("diagram.mermaid-visualizer.json");
-    expect(defaultFilenameFor("markdown-mermaid")).toBe("diagram.md");
-    expect(defaultFilenameFor("drawio-xml")).toBe("diagram.drawio.xml");
+    expect(defaultFilenameFor("editor-json", "审批 流程")).toBe("审批-流程.mermaid-visualizer.json");
+    expect(defaultFilenameFor("markdown-mermaid", "  ")).toBe("untitled-diagram.md");
+    expect(defaultFilenameFor("drawio-xml", "导入图表")).toBe("导入图表.drawio.xml");
   });
 
   it("downloads text files through a temporary blob URL", () => {

@@ -20,11 +20,17 @@ import { deriveNodePaint, resolveNodeAppearance } from "./app/appearance";
 import { pickAutoHandle, validateConnection } from "./app/connection";
 import { copyExportToClipboard, type ExportFormat } from "./app/export";
 import { buildHiddenGroupIds, isGroupVisible } from "./app/group-visibility";
-import { ImportDrawioError, importDrawioXml } from "./app/import-drawio";
 import { getDefaultNodeSize } from "./app/node-geometry";
 import { getPaletteItem, type PaletteItemId } from "./app/palette";
 import { QUICK_CONNECT_EVENT, type QuickConnectEventDetail } from "./app/quick-connect-events";
-import { applyFlowNodePosition, modelToFlowElements } from "./app/reactflow-mapper";
+import {
+  applyFlowNodePosition,
+  getFlowNamespace,
+  getModelEdgeId,
+  getModelGroupId,
+  getModelNodeId,
+  modelToFlowElements,
+} from "./app/reactflow-mapper";
 import { useAutoApplyCode } from "./hooks/useAutoApplyCode";
 import { useEditorPersistence } from "./hooks/useEditorPersistence";
 import { useMermaidPreview } from "./hooks/useMermaidPreview";
@@ -55,6 +61,7 @@ import type {
 } from "./app/types";
 import { CanvasToolbar } from "./components/CanvasToolbar";
 import { ContextToolbar } from "./components/ContextToolbar";
+import { DocumentBar } from "./components/DocumentBar";
 import { EdgeContextToolbar } from "./components/EdgeContextToolbar";
 import { FlowEdge } from "./components/FlowEdge";
 import { InlineTextOverlay, type InlineArmedTarget, type InlineOverlayRect } from "./components/InlineTextOverlay";
@@ -84,6 +91,11 @@ function EditorApp() {
     codeDirty,
     warnings,
     message,
+    currentDocumentId,
+    currentDocumentTitle,
+    documentSyncState,
+    lastSavedAt,
+    recentDocuments,
     selectedNodeIds,
     selectedEdgeIds,
     selectedGroupIds,
@@ -101,10 +113,9 @@ function EditorApp() {
     setViewportHudVisible,
     applyCodeToModel,
     syncCodeFromModel,
-    replaceModel,
-    newDocument,
-    openMermaidText,
-    downloadExport,
+    importDrawioDocument,
+    renameCurrentDocument,
+    switchDocument,
     beginInlineEdit,
     endInlineEdit,
     undo,
@@ -132,8 +143,23 @@ function EditorApp() {
     autoLayout,
     pendingRenderTick,
     fitViewTick,
+    saveCurrentDocument,
   } = useEditorStore();
-  useEditorPersistence(useMemo(() => ({ code, model, codeDirty }), [code, codeDirty, model]), persistenceReady);
+  useEditorPersistence(
+    useMemo(
+      () => ({
+        currentDocumentId,
+        title: currentDocumentTitle,
+        code,
+        model,
+        codeDirty,
+        documentSyncState,
+      }),
+      [code, codeDirty, currentDocumentId, currentDocumentTitle, documentSyncState, model],
+    ),
+    persistenceReady,
+    saveCurrentDocument,
+  );
   const { previewSvg, previewError } = useMermaidPreview(code, pendingRenderTick);
   const [spacePressed, setSpacePressed] = useState(false);
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
@@ -157,11 +183,14 @@ function EditorApp() {
   const paletteDragRef = useRef<PaletteDragSession | null>(null);
   const suppressPaletteClickRef = useRef<PaletteItemId | null>(null);
   const deferredSelectionFrameRef = useRef<number | null>(null);
+  const deferredDocumentSwitchFrameRef = useRef<number | null>(null);
+  const suppressSelectionSyncRef = useRef(false);
 
   const { fitView, zoomIn, zoomOut, setViewport, screenToFlowPosition } = useReactFlow();
   const fitViewRef = useRef(fitView);
   const isClassicPreset = interaction.uiPreset === "classic";
   const effectiveToolMode: ToolMode = isClassicPreset ? "select" : interaction.toolMode;
+  const flowNamespace = useMemo(() => getFlowNamespace(currentDocumentId), [currentDocumentId]);
 
   const handleQuickConnect = useCallback(
     (sourceNodeId: string, direction: QuickConnectDirection, anchorClientX: number, anchorClientY: number) => {
@@ -215,6 +244,7 @@ function EditorApp() {
     () =>
       modelToFlowElements(model, {
         toolMode: effectiveToolMode,
+        flowNamespace,
         selectedNodeIds,
         selectedEdgeIds,
         selectedGroupIds,
@@ -232,6 +262,7 @@ function EditorApp() {
     [
       connectingNodeId,
       effectiveToolMode,
+      flowNamespace,
       model,
       selectedEdgeIds,
       selectedGroupIds,
@@ -244,6 +275,18 @@ function EditorApp() {
 
   const flowNodeMap = useMemo(() => new Map(elements.nodes.map((node) => [node.id, node])), [elements.nodes]);
   const groupMap = useMemo(() => new Map(model.groups.map((group) => [group.id, group])), [model.groups]);
+  const getParentGroupFromFlowParentId = useCallback(
+    (parentFlowId?: string) => {
+      if (!parentFlowId) {
+        return undefined;
+      }
+
+      const parentFlowNode = flowNodeMap.get(parentFlowId);
+      const parentGroupId = getModelGroupId(parentFlowNode ?? parentFlowId);
+      return parentGroupId ? groupMap.get(parentGroupId) : undefined;
+    },
+    [flowNodeMap, groupMap],
+  );
 
   const selectedNode = useMemo(() => {
     if (selectedNodeIds.length !== 1 || selectedEdgeIds.length > 0 || selectedGroupIds.length > 0) {
@@ -438,6 +481,9 @@ function EditorApp() {
       if (deferredSelectionFrameRef.current !== null) {
         window.cancelAnimationFrame(deferredSelectionFrameRef.current);
       }
+      if (deferredDocumentSwitchFrameRef.current !== null) {
+        window.cancelAnimationFrame(deferredDocumentSwitchFrameRef.current);
+      }
     };
   }, []);
 
@@ -453,6 +499,37 @@ function EditorApp() {
       });
     },
     [setSelection],
+  );
+
+  const handleSwitchDocument = useCallback(
+    (documentId: string) => {
+      if (!documentId || documentId === currentDocumentId) {
+        return;
+      }
+
+      suppressSelectionSyncRef.current = true;
+      setConnectingNodeId(null);
+      setEdgeEditor(null);
+      setAlignmentGuides(EMPTY_GUIDES);
+      setLaneDrawArmed(false);
+      setLaneDraft(null);
+      laneDraftRef.current = null;
+      setPaletteDragSession(null);
+      paletteDragRef.current = null;
+      setQuickCreateSession(null);
+      setContextToolbarPopoverOpen(false);
+      setSelection([], [], []);
+
+      if (deferredDocumentSwitchFrameRef.current !== null) {
+        window.cancelAnimationFrame(deferredDocumentSwitchFrameRef.current);
+      }
+
+      deferredDocumentSwitchFrameRef.current = window.requestAnimationFrame(() => {
+        deferredDocumentSwitchFrameRef.current = null;
+        switchDocument(documentId);
+      });
+    },
+    [currentDocumentId, setSelection, switchDocument],
   );
 
   useAutoApplyCode(code, codeDirty, applyCodeToModel);
@@ -472,6 +549,26 @@ function EditorApp() {
   useEffect(() => {
     fitViewRef.current = fitView;
   }, [fitView]);
+
+  useEffect(() => {
+    suppressSelectionSyncRef.current = true;
+    setConnectingNodeId(null);
+    setEdgeEditor(null);
+    setAlignmentGuides(EMPTY_GUIDES);
+    setLaneDrawArmed(false);
+    setLaneDraft(null);
+    laneDraftRef.current = null;
+    setPaletteDragSession(null);
+    paletteDragRef.current = null;
+    setQuickCreateSession(null);
+    setContextToolbarPopoverOpen(false);
+
+    const raf = window.requestAnimationFrame(() => {
+      suppressSelectionSyncRef.current = false;
+    });
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [currentDocumentId]);
 
   useEffect(() => {
     previousRightPanelOpenRef.current = rightPanelOpen;
@@ -729,8 +826,10 @@ function EditorApp() {
 
   const resolveHandlePair = useCallback(
     (connection: Pick<Connection, "source" | "target" | "sourceHandle" | "targetHandle">) => {
-      const sourceNode = model.nodes.find((node) => node.id === connection.source);
-      const targetNode = model.nodes.find((node) => node.id === connection.target);
+      const sourceId = getModelNodeId(connection.source);
+      const targetId = getModelNodeId(connection.target);
+      const sourceNode = model.nodes.find((node) => node.id === sourceId);
+      const targetNode = model.nodes.find((node) => node.id === targetId);
       if (!sourceNode || !targetNode) {
         return null;
       }
@@ -751,41 +850,66 @@ function EditorApp() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      const result = validateConnection(connection, model);
+      const sourceId = getModelNodeId(connection.source);
+      const targetId = getModelNodeId(connection.target);
+      if (!sourceId || !targetId) {
+        notify("error", "无法解析连线端点");
+        return;
+      }
+
+      const normalizedConnection = {
+        ...connection,
+        source: sourceId,
+        target: targetId,
+      };
+      const result = validateConnection(normalizedConnection, model);
       if (!result.ok) {
         notify("error", result.reason || "无法创建连线");
         return;
       }
 
-      const handles = resolveHandlePair(connection);
-      if (!connection.source || !connection.target || !handles) {
+      const handles = resolveHandlePair(normalizedConnection);
+      if (!sourceId || !targetId || !handles) {
         notify("error", "无法解析连线端口");
         return;
       }
 
-      upsertEdge(connection.source, connection.target, "", handles.sourceHandle, handles.targetHandle);
+      upsertEdge(sourceId, targetId, "", handles.sourceHandle, handles.targetHandle);
     },
     [model, notify, resolveHandlePair, upsertEdge],
   );
 
   const onReconnect = useCallback<OnReconnect<Edge>>(
     (oldEdge, newConnection) => {
-      const result = validateConnection(newConnection, model, { ignoreEdgeId: oldEdge.id });
+      const edgeId = getModelEdgeId(oldEdge) ?? oldEdge.id;
+      const sourceId = getModelNodeId(newConnection.source);
+      const targetId = getModelNodeId(newConnection.target);
+      if (!sourceId || !targetId) {
+        notify("error", "无法解析重连端点");
+        return;
+      }
+
+      const normalizedConnection = {
+        ...newConnection,
+        source: sourceId,
+        target: targetId,
+      };
+      const result = validateConnection(normalizedConnection, model, { ignoreEdgeId: edgeId });
       if (!result.ok) {
         notify("error", result.reason || "无法重连边");
         return;
       }
 
-      const handles = resolveHandlePair(newConnection);
-      if (!newConnection.source || !newConnection.target || !handles) {
+      const handles = resolveHandlePair(normalizedConnection);
+      if (!sourceId || !targetId || !handles) {
         notify("error", "无法解析重连端口");
         return;
       }
 
       finishEdgeReconnect({
-        edgeId: oldEdge.id,
-        source: newConnection.source,
-        target: newConnection.target,
+        edgeId,
+        source: sourceId,
+        target: targetId,
         sourceHandle: handles.sourceHandle,
         targetHandle: handles.targetHandle,
       });
@@ -805,13 +929,15 @@ function EditorApp() {
     (changes) => {
       for (const change of changes) {
         if (change.type === "position" && change.position) {
-          const isGroup = groupMap.has(change.id);
-          const parent = flowNodeMap.get(change.id)?.parentId ? groupMap.get(flowNodeMap.get(change.id)!.parentId!) : undefined;
-          const target = isGroup
-            ? groupMap.get(change.id)
-            : model.nodes.find((node) => node.id === change.id);
+          const flowNode = flowNodeMap.get(change.id);
+          const groupId = getModelGroupId(flowNode ?? change.id);
+          const nodeId = getModelNodeId(flowNode ?? change.id);
+          const isGroup = !!groupId;
+          const modelId = groupId ?? nodeId;
+          const parent = getParentGroupFromFlowParentId(flowNode?.parentId);
+          const target = isGroup ? (groupId ? groupMap.get(groupId) : undefined) : model.nodes.find((node) => node.id === nodeId);
 
-          if (!target) {
+          if (!target || !modelId || !flowNode) {
             continue;
           }
 
@@ -822,20 +948,20 @@ function EditorApp() {
           };
           if (isGroup) {
             updateGroupGeometry(
-              change.id,
+              modelId,
               normalizedAbsolute.x,
               normalizedAbsolute.y,
-              roundCanvasValue(flowNodeMap.get(change.id)?.width || 320),
-              roundCanvasValue(flowNodeMap.get(change.id)?.height || 180),
+              roundCanvasValue(flowNode.width || 320),
+              roundCanvasValue(flowNode.height || 180),
               false,
             );
           } else {
             updateNodeGeometry(
-              change.id,
+              modelId,
               normalizedAbsolute.x,
               normalizedAbsolute.y,
-              flowNodeMap.get(change.id)?.width ? roundCanvasValue(flowNodeMap.get(change.id)!.width!) : undefined,
-              flowNodeMap.get(change.id)?.height ? roundCanvasValue(flowNodeMap.get(change.id)!.height!) : undefined,
+              flowNode.width ? roundCanvasValue(flowNode.width) : undefined,
+              flowNode.height ? roundCanvasValue(flowNode.height) : undefined,
               false,
             );
           }
@@ -843,18 +969,15 @@ function EditorApp() {
         }
 
         if (change.type === "dimensions" && change.dimensions) {
-          const isGroup = groupMap.has(change.id);
-          if (!isGroup) {
-            continue;
-          }
           const flowNode = flowNodeMap.get(change.id);
-          if (!flowNode) {
+          const groupId = getModelGroupId(flowNode ?? change.id);
+          const currentGroup = groupId ? groupMap.get(groupId) : undefined;
+          if (!groupId || !flowNode || !currentGroup) {
             continue;
           }
-
-          const parent = flowNode.parentId ? groupMap.get(flowNode.parentId) : undefined;
+          const parent = getParentGroupFromFlowParentId(flowNode.parentId);
           const absolute = applyFlowNodePosition(
-            isGroup ? (groupMap.get(change.id) as DiagramGroup) : model.nodes.find((node) => node.id === change.id)!,
+            currentGroup,
             flowNode.position,
             parent,
           );
@@ -867,19 +990,17 @@ function EditorApp() {
             height: roundCanvasValue(change.dimensions.height),
           };
 
-          if (isGroup) {
-            updateGroupGeometry(
-              change.id,
-              normalizedAbsolute.x,
-              normalizedAbsolute.y,
-              normalizedDimensions.width,
-              normalizedDimensions.height,
-            );
-          }
+          updateGroupGeometry(
+            groupId,
+            normalizedAbsolute.x,
+            normalizedAbsolute.y,
+            normalizedDimensions.width,
+            normalizedDimensions.height,
+          );
         }
       }
     },
-    [flowNodeMap, groupMap, model.nodes, updateGroupGeometry, updateNodeGeometry],
+    [flowNodeMap, getParentGroupFromFlowParentId, groupMap, model.nodes, updateGroupGeometry, updateNodeGeometry],
   );
 
   const onNodeDrag = useCallback(
@@ -888,20 +1009,22 @@ function EditorApp() {
         dragSnapRef.current = { x: null, y: null };
         return;
       }
-      if (groupMap.has(node.id)) {
+      const nodeGroupId = getModelGroupId(node);
+      const nodeId = getModelNodeId(node);
+      if (nodeGroupId || !nodeId) {
         dragSnapRef.current = { x: null, y: null };
         setAlignmentGuides(EMPTY_GUIDES);
         return;
       }
 
-      const parent = node.parentId ? groupMap.get(node.parentId) : undefined;
+      const parent = getParentGroupFromFlowParentId(node.parentId);
       const nodeWidth = node.width || 148;
       const nodeHeight = node.height || 72;
       const absolute = parent ? { x: parent.x + node.position.x, y: parent.y + node.position.y } : node.position;
 
       const snap = calculateAlignmentSnap(
         {
-          id: node.id,
+          id: nodeId,
           x: absolute.x,
           y: absolute.y,
           width: nodeWidth,
@@ -913,28 +1036,37 @@ function EditorApp() {
       dragSnapRef.current = { x: snap.snappedX, y: snap.snappedY };
       setAlignmentGuides(snap.guides);
     },
-    [groupMap, interaction.showAlignmentGuides, model.nodes],
+    [getParentGroupFromFlowParentId, interaction.showAlignmentGuides, model.nodes],
   );
 
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      const isGroup = groupMap.has(node.id);
-      const parent = node.parentId ? groupMap.get(node.parentId) : undefined;
+      const groupId = getModelGroupId(node);
+      const nodeId = getModelNodeId(node);
+      const isGroup = !!groupId;
+      const modelId = groupId ?? nodeId;
+      const parent = getParentGroupFromFlowParentId(node.parentId);
+      const currentGroup = groupId ? groupMap.get(groupId) : undefined;
+      const currentNode = nodeId ? model.nodes.find((item) => item.id === nodeId) : undefined;
 
-      const absolute = applyFlowNodePosition(
-        isGroup ? (groupMap.get(node.id) as DiagramGroup) : model.nodes.find((n) => n.id === node.id)!,
-        node.position,
-        parent,
-      );
+      if (!modelId || (isGroup && !currentGroup) || (!isGroup && !currentNode)) {
+        return;
+      }
+
+      const target = isGroup ? currentGroup : currentNode;
+      if (!target) {
+        return;
+      }
+
+      const absolute = applyFlowNodePosition(target, node.position, parent);
 
       if (isGroup) {
-        updateGroupGeometry(node.id, absolute.x, absolute.y, node.width || 320, node.height || 180, true);
+        updateGroupGeometry(modelId, absolute.x, absolute.y, node.width || 320, node.height || 180, true);
       } else {
         const nextX = dragSnapRef.current.x ?? absolute.x;
         const nextY = dragSnapRef.current.y ?? absolute.y;
         const normalizedNextX = roundCanvasValue(nextX);
         const normalizedNextY = roundCanvasValue(nextY);
-        const currentNode = model.nodes.find((item) => item.id === node.id);
         const nextParentGroupId = currentNode
           ? findContainingGroupId(
               {
@@ -949,112 +1081,151 @@ function EditorApp() {
           : undefined;
 
         updateNodeGeometry(
-          node.id,
+          modelId,
           normalizedNextX,
           normalizedNextY,
           node.width ? roundCanvasValue(node.width) : undefined,
           node.height ? roundCanvasValue(node.height) : undefined,
           true,
         );
-        updateNodeParentGroup(node.id, nextParentGroupId, false);
+        updateNodeParentGroup(modelId, nextParentGroupId, false);
       }
       dragSnapRef.current = { x: null, y: null };
       setAlignmentGuides(EMPTY_GUIDES);
       syncCodeFromModel();
     },
-    [groupMap, model.groups, model.nodes, syncCodeFromModel, updateGroupGeometry, updateNodeGeometry, updateNodeParentGroup],
+    [
+      getParentGroupFromFlowParentId,
+      groupMap,
+      model.groups,
+      model.nodes,
+      syncCodeFromModel,
+      updateGroupGeometry,
+      updateNodeGeometry,
+      updateNodeParentGroup,
+    ],
   );
 
   const onNodeDoubleClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      if (groupMap.has(node.id)) {
-        const currentGroup = model.groups.find((group) => group.id === node.id);
+      const groupId = getModelGroupId(node);
+      if (groupId) {
+        const currentGroup = model.groups.find((group) => group.id === groupId);
         if (!currentGroup) {
           return;
         }
         setEdgeEditor(null);
         beginInlineEdit({
           targetType: "group",
-          targetId: node.id,
+          targetId: groupId,
           initialValue: currentGroup.title,
-          sessionId: `group-${node.id}-${Date.now()}`,
+          sessionId: `group-${groupId}-${Date.now()}`,
           source: "double-click",
           replaceMode: "preserve",
         });
         return;
       }
 
-      const current = model.nodes.find((item) => item.id === node.id);
+      const nodeId = getModelNodeId(node);
+      const current = model.nodes.find((item) => item.id === nodeId);
       if (!current) {
         return;
       }
       setEdgeEditor(null);
       beginInlineEdit({
         targetType: "node",
-        targetId: node.id,
+        targetId: nodeId!,
         initialValue: current.label,
-        sessionId: `node-${node.id}-${Date.now()}`,
+        sessionId: `node-${nodeId}-${Date.now()}`,
         source: "double-click",
         replaceMode: "preserve",
       });
     },
-    [beginInlineEdit, groupMap, model.groups, model.nodes],
+    [beginInlineEdit, model.groups, model.nodes],
   );
 
   const onEdgeDoubleClick = useCallback(
     (_event: React.MouseEvent, edge: Edge) => {
-      const current = model.edges.find((item) => item.id === edge.id);
+      const edgeId = getModelEdgeId(edge);
+      const current = model.edges.find((item) => item.id === edgeId);
       if (!current) {
         return;
       }
       endInlineEdit();
-      setEdgeEditor({ edgeId: edge.id, value: current.label || "" });
+      setEdgeEditor({ edgeId: edgeId!, value: current.label || "" });
     },
     [endInlineEdit, model.edges],
   );
 
   const onSelectionChange = useCallback(
     ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
+      if (suppressSelectionSyncRef.current) {
+        return;
+      }
+
       const nodeIds: string[] = [];
       const groupIds: string[] = [];
 
       for (const node of nodes) {
-        if (groupMap.has(node.id)) {
-          groupIds.push(node.id);
-        } else {
-          nodeIds.push(node.id);
+        const groupId = getModelGroupId(node);
+        if (groupId) {
+          groupIds.push(groupId);
+          continue;
+        }
+
+        const nodeId = getModelNodeId(node);
+        if (nodeId) {
+          nodeIds.push(nodeId);
         }
       }
 
-      setSelection(nodeIds, edges.map((edge) => edge.id), groupIds);
+      setSelection(
+        nodeIds,
+        edges
+          .map((edge) => getModelEdgeId(edge))
+          .filter((edgeId): edgeId is string => !!edgeId),
+        groupIds,
+      );
     },
-    [groupMap, setSelection],
+    [setSelection],
   );
 
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      const isGroup = groupMap.has(node.id);
+      const groupId = getModelGroupId(node);
+      const nodeId = getModelNodeId(node);
+      const isGroup = !!groupId;
+      const modelId = groupId ?? nodeId;
+      if (!modelId) {
+        return;
+      }
+
       if (event.shiftKey) {
         setSelection(
-          isGroup ? selectedNodeIds : toggleSelectionId(selectedNodeIds, node.id),
+          isGroup ? selectedNodeIds : toggleSelectionId(selectedNodeIds, modelId),
           selectedEdgeIds,
-          isGroup ? toggleSelectionId(selectedGroupIds, node.id) : selectedGroupIds,
+          isGroup ? toggleSelectionId(selectedGroupIds, modelId) : selectedGroupIds,
         );
         return;
       }
 
-      setSelection(isGroup ? [] : [node.id], [], isGroup ? [node.id] : []);
+      setSelection(isGroup ? [] : [modelId], [], isGroup ? [modelId] : []);
     },
-    [groupMap, selectedEdgeIds, selectedGroupIds, selectedNodeIds, setSelection],
+    [selectedEdgeIds, selectedGroupIds, selectedNodeIds, setSelection],
   );
 
   const onEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
-      if (event.shiftKey) {
-        setSelection(selectedNodeIds, toggleSelectionId(selectedEdgeIds, edge.id), selectedGroupIds);
+      const edgeId = getModelEdgeId(edge);
+      if (!edgeId) {
         return;
       }
-      setSelection([], [edge.id], []);
+
+      if (event.shiftKey) {
+        setSelection(selectedNodeIds, toggleSelectionId(selectedEdgeIds, edgeId), selectedGroupIds);
+        return;
+      }
+      setSelection([], [edgeId], []);
     },
     [selectedEdgeIds, selectedGroupIds, selectedNodeIds, setSelection],
   );
@@ -1230,86 +1401,11 @@ function EditorApp() {
     [model, notify],
   );
 
-  const confirmReplaceDiagram = useCallback(() => {
-    const hasContent =
-      codeDirty ||
-      model.nodes.length > 0 ||
-      model.edges.length > 0 ||
-      model.groups.length > 0 ||
-      model.rawPassthroughStatements.length > 0;
-
-    if (!hasContent) {
-      return true;
-    }
-
-    return window.confirm("当前图表将被覆盖，是否继续？");
-  }, [codeDirty, model.edges.length, model.groups.length, model.nodes.length, model.rawPassthroughStatements.length]);
-
-  const handleNewDocument = useCallback(() => {
-    if (!confirmReplaceDiagram()) {
-      return;
-    }
-    newDocument();
-  }, [confirmReplaceDiagram, newDocument]);
-
-  const handleOpenMermaidFile = useCallback(
-    async (file: File) => {
-      if (!confirmReplaceDiagram()) {
-        return;
-      }
-
-      try {
-        await openMermaidText(await file.text());
-      } catch {
-        notify("error", "读取 Mermaid 文件失败");
-      }
-    },
-    [confirmReplaceDiagram, notify, openMermaidText],
-  );
-
   const handleImportXmlText = useCallback(
     (xmlText: string) => {
-      if (!confirmReplaceDiagram()) {
-        return;
-      }
-
-      const trimmed = xmlText.trim();
-      if (!trimmed) {
-        notify("error", "XML 内容为空，导入已取消");
-        return;
-      }
-
-      try {
-        const imported = importDrawioXml(trimmed);
-        const message =
-          imported.warnings.length > 0
-            ? `已导入 XML（${imported.warnings[0]}）`
-            : "已导入 XML";
-        replaceModel(imported.model, message);
-        window.requestAnimationFrame(() => {
-          fitView({ padding: 0.2, duration: 220 });
-        });
-      } catch (error) {
-        if (error instanceof ImportDrawioError) {
-          notify("error", error.message);
-          return;
-        }
-        notify("error", "导入 XML 失败，请检查内容格式");
-      }
+      importDrawioDocument("imported-diagram.drawio", xmlText);
     },
-    [confirmReplaceDiagram, fitView, notify, replaceModel],
-  );
-
-  const handleImportXmlFile = useCallback(
-    async (file: File) => {
-      try {
-        const text = await file.text();
-        handleImportXmlText(text);
-      } catch {
-        notify("error", "读取 XML 文件失败");
-      }
-    },
-    [handleImportXmlText, notify],
+    [importDrawioDocument],
   );
 
   useEffect(() => {
@@ -1403,6 +1499,7 @@ function EditorApp() {
     <div className={`app-shell figjam-shell ${rightPanelOpen ? "app-shell--right-open" : "app-shell--right-closed"}`}>
       <main ref={workspaceRef} className="workspace" style={{ cursor: flowCursor }}>
         <ReactFlow
+          key={flowNamespace}
           nodes={elements.nodes}
           edges={elements.edges}
           nodeTypes={NODE_TYPES}
@@ -1422,7 +1519,7 @@ function EditorApp() {
           onConnectStart={onConnectStart}
           onConnectEnd={onConnectEnd}
           onReconnect={onReconnect}
-          onReconnectStart={(_event, edge, handleType) => startEdgeReconnect(edge.id, handleType)}
+          onReconnectStart={(_event, edge, handleType) => startEdgeReconnect(getModelEdgeId(edge) ?? edge.id, handleType)}
           onReconnectEnd={onConnectEnd}
           onNodesChange={onNodesChange}
           onSelectionChange={onSelectionChange}
@@ -1593,12 +1690,8 @@ function EditorApp() {
             zoom={zoom}
             snapToGrid={interaction.snapToGrid}
             onToggleSnap={toggleSnap}
-            onNewDocument={handleNewDocument}
             onCopyExport={(format) => void handleCopyExport(format)}
-            onDownloadExport={downloadExport}
-            onImportMermaidFile={(file) => void handleOpenMermaidFile(file)}
             onImportXmlText={handleImportXmlText}
-            onImportXmlFile={(file) => void handleImportXmlFile(file)}
             onFitView={() => fitView({ padding: 0.2, duration: 220 })}
             onReset={() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 220 })}
             onZoomOut={() => zoomOut({ duration: 120 })}
@@ -1645,7 +1738,6 @@ function EditorApp() {
 
       <aside className={`panel panel--right ${rightPanelOpen ? "is-open" : "is-collapsed"}`}>
         <div className="panel--right__chrome">
-          {rightPanelOpen ? <div className="panel--right__title">Mermaid</div> : null}
           <button
             className="panel-toggle-button"
             onClick={() => setRightPanelOpen((prev) => !prev)}
@@ -1658,7 +1750,16 @@ function EditorApp() {
 
         {rightPanelOpen ? (
           <>
-            <section>
+            <DocumentBar
+              currentDocumentId={currentDocumentId}
+              title={currentDocumentTitle}
+              syncState={documentSyncState}
+              lastSavedAt={lastSavedAt}
+              recentDocuments={recentDocuments}
+              onRename={renameCurrentDocument}
+              onSwitchDocument={handleSwitchDocument}
+            />
+            <section className="panel--right__section">
               <h2>Mermaid 代码</h2>
               <textarea
                 value={code}
@@ -1675,7 +1776,7 @@ function EditorApp() {
               ) : null}
             </section>
 
-            <section>
+            <section className="panel--right__section">
               <div className="preview-head">
                 <h2>实时预览</h2>
               </div>

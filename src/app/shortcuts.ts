@@ -15,7 +15,12 @@ export function isInputLike(target: EventTarget | null): boolean {
     return false;
   }
 
-  return element.tagName === "TEXTAREA" || element.tagName === "INPUT" || element.isContentEditable;
+  return (
+    element.tagName === "TEXTAREA" ||
+    element.tagName === "INPUT" ||
+    element.tagName === "SELECT" ||
+    element.isContentEditable
+  );
 }
 
 export function isArmedInlineProxyTarget(target: EventTarget | null): boolean {

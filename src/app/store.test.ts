@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadStoredDocument, saveStoredDocument, saveWorkspaceState } from "./document-persistence";
 import * as fileIo from "./file-io";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 import { useEditorStore } from "./store";
@@ -217,7 +218,7 @@ describe("editor store shortcuts state", () => {
     resetStore(createModel());
     let downloadedText = "";
     const downloadSpy = vi.spyOn(fileIo, "downloadTextFile").mockImplementation((filename, text, type) => {
-      expect(filename).toBe("diagram.md");
+      expect(filename).toBe("未命名图表.md");
       expect(type).toBe("text/markdown;charset=utf-8");
       downloadedText = text;
     });
@@ -266,6 +267,125 @@ describe("editor store shortcuts state", () => {
     expect(useEditorStore.getState().code).toContain("R1-->R2");
     expect(useEditorStore.getState().message.text).toContain("恢复");
     expect(useEditorStore.getState().fitViewTick).toBeGreaterThan(0);
+  });
+
+  it("reopens the last opened browser-local document on init", () => {
+    saveStoredDocument({
+      version: 1,
+      id: "doc-1",
+      title: "旧文档",
+      createdAt: "2026-03-28T09:00:00.000Z",
+      updatedAt: "2026-03-28T09:00:00.000Z",
+      lastOpenedAt: "2026-03-28T09:00:00.000Z",
+      code: "flowchart LR\nA-->B",
+      codeDirty: false,
+      model: createModel(),
+    });
+    saveStoredDocument({
+      version: 1,
+      id: "doc-2",
+      title: "最近文档",
+      createdAt: "2026-03-28T10:00:00.000Z",
+      updatedAt: "2026-03-28T10:10:00.000Z",
+      lastOpenedAt: "2026-03-28T10:15:00.000Z",
+      code: "flowchart LR\nB-->C",
+      codeDirty: false,
+      model: {
+        version: 2,
+        direction: "LR",
+        rawPassthroughStatements: [],
+        groups: [],
+        nodes: [
+          { id: "B", type: "start", label: "开始", x: 80, y: 120, width: 130, height: 66 },
+          { id: "C", type: "process", label: "继续", x: 280, y: 120, width: 148, height: 72 },
+        ],
+        edges: [{ id: "E1", from: "B", to: "C", label: "", strokePattern: "solid" }],
+      },
+    });
+    saveWorkspaceState({ version: 1, lastOpenedDocumentId: "doc-2" });
+
+    useEditorStore.getState().init();
+
+    expect(useEditorStore.getState().currentDocumentId).toBe("doc-2");
+    expect(useEditorStore.getState().currentDocumentTitle).toBe("最近文档");
+    expect(useEditorStore.getState().recentDocuments.map((item) => item.id)).toEqual(["doc-2", "doc-1"]);
+    expect(useEditorStore.getState().code).toContain("B-->C");
+  });
+
+  it("renames and persists the current document title after saving", () => {
+    useEditorStore.getState().init();
+
+    useEditorStore.getState().renameCurrentDocument("新的流程图");
+    useEditorStore.getState().saveCurrentDocument();
+
+    const currentId = useEditorStore.getState().currentDocumentId;
+    expect(currentId).toBeTruthy();
+    expect(loadStoredDocument(currentId!)?.title).toBe("新的流程图");
+    expect(useEditorStore.getState().documentSyncState).toBe("saved");
+  });
+
+  it("creates a new browser-local document without erasing the current one", () => {
+    useEditorStore.getState().init();
+    const previousId = useEditorStore.getState().currentDocumentId;
+
+    useEditorStore.getState().createDocument();
+
+    const next = useEditorStore.getState();
+    expect(next.currentDocumentId).not.toBe(previousId);
+    expect(next.currentDocumentTitle).toContain("未命名图表");
+    expect(next.recentDocuments).toHaveLength(2);
+    expect(loadStoredDocument(previousId!)).not.toBeNull();
+  });
+
+  it("duplicates the current document and switches to the copy", () => {
+    useEditorStore.getState().init();
+    const previousId = useEditorStore.getState().currentDocumentId;
+
+    useEditorStore.getState().duplicateCurrentDocument();
+
+    const next = useEditorStore.getState();
+    expect(next.currentDocumentId).not.toBe(previousId);
+    expect(next.currentDocumentTitle).toContain("副本");
+    expect(next.recentDocuments).toHaveLength(2);
+    expect(loadStoredDocument(next.currentDocumentId!)?.code).toBe(next.code);
+  });
+
+  it("switches documents after persisting pending edits on the current one", () => {
+    useEditorStore.getState().init();
+    const firstId = useEditorStore.getState().currentDocumentId!;
+
+    useEditorStore.getState().renameCurrentDocument("第一个流程");
+    useEditorStore.getState().setCode("flowchart LR\nA[第一个节点]");
+    useEditorStore.getState().saveCurrentDocument();
+
+    useEditorStore.getState().createDocument();
+    const secondId = useEditorStore.getState().currentDocumentId!;
+
+    useEditorStore.getState().renameCurrentDocument("第二个流程");
+    useEditorStore.getState().setCode("flowchart LR\nB[第二个节点]");
+
+    useEditorStore.getState().switchDocument(firstId);
+
+    const next = useEditorStore.getState();
+    expect(next.currentDocumentId).toBe(firstId);
+    expect(next.currentDocumentTitle).toBe("第一个流程");
+    expect(next.code).toContain("A[第一个节点]");
+    expect(loadStoredDocument(secondId)?.title).toBe("第二个流程");
+    expect(loadStoredDocument(secondId)?.code).toContain("B[第二个节点]");
+  });
+
+  it("imports Mermaid into a new named document instead of replacing the current one", async () => {
+    useEditorStore.getState().init();
+    const previousId = useEditorStore.getState().currentDocumentId;
+
+    await useEditorStore.getState().importMermaidDocument("onboarding-flow.md", "flowchart LR\nI1-->I2");
+
+    const next = useEditorStore.getState();
+    expect(next.currentDocumentId).not.toBe(previousId);
+    expect(next.currentDocumentTitle).toBe("onboarding-flow");
+    expect(next.recentDocuments).toHaveLength(2);
+    expect(loadStoredDocument(previousId!)).not.toBeNull();
+    expect(next.code).toContain("I1-->I2");
   });
 
   it("falls back to the sample for parseable but style/appearance-corrupted draft payloads", () => {

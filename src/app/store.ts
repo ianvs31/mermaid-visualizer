@@ -1,15 +1,25 @@
 import { create } from "zustand";
 import { resolveNodeAppearance, stripPaintStyle } from "./appearance";
+import {
+  loadStoredDocument,
+  loadWorkspaceState,
+  listStoredDocuments,
+  migrateLegacyDraftToStoredDocument,
+  saveStoredDocument,
+  saveWorkspaceState,
+} from "./document-persistence";
 import { buildExportText, exportMimeTypeFor, type ExportFormat } from "./export";
 import { defaultFilenameFor, downloadTextFile } from "./file-io";
+import { ImportDrawioError, importDrawioXml } from "./import-drawio";
 import { applyElkLayout } from "./layout";
 import { getDefaultNodeSize } from "./node-geometry";
-import { loadDraftSnapshot } from "./persistence";
 import { parseMermaidFlowchartV2 } from "./parser";
 import { serializeMermaidFlowchartV2 } from "./serializer";
 import {
   DEFAULT_DIRECTION,
+  type DocumentSyncState,
   type DiagramEdge,
+  type EditorDocumentSummary,
   type DiagramGroup,
   type DiagramModel,
   type DiagramNode,
@@ -19,6 +29,7 @@ import {
   type InlineEditSession,
   type InteractionState,
   type NodeAppearance,
+  type StoredEditorDocumentV1,
   type ToolMode,
   type UiPreset,
   createEmptyModel,
@@ -43,6 +54,11 @@ interface EditorState {
   codeDirty: boolean;
   warnings: string[];
   message: EditorMessage;
+  currentDocumentId?: string;
+  currentDocumentTitle: string;
+  documentSyncState: DocumentSyncState;
+  lastSavedAt?: string;
+  recentDocuments: EditorDocumentSummary[];
   inlineEditSession?: InlineEditSession;
   selectedNodeIds: string[];
   selectedEdgeIds: string[];
@@ -59,6 +75,7 @@ interface EditorState {
   pendingRenderTick: number;
   fitViewTick: number;
   init: () => void;
+  saveCurrentDocument: () => void;
   setZoom: (zoom: number) => void;
   setCode: (code: string) => void;
   notify: (tone: EditorMessage["tone"], text: string) => void;
@@ -69,6 +86,12 @@ interface EditorState {
   syncCodeFromModel: () => void;
   applyCodeToModel: (options?: { fitView?: boolean; quiet?: boolean }) => Promise<void>;
   replaceModel: (model: DiagramModel, note?: string, options?: { recordHistory?: boolean }) => void;
+  createDocument: () => void;
+  renameCurrentDocument: (title: string) => void;
+  duplicateCurrentDocument: () => void;
+  switchDocument: (documentId: string) => void;
+  importMermaidDocument: (fileName: string, text: string) => Promise<void>;
+  importDrawioDocument: (fileName: string, xmlText: string) => void;
   newDocument: () => void;
   openMermaidText: (text: string) => Promise<void>;
   downloadExport: (format: ExportFormat) => void;
@@ -141,6 +164,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   codeDirty: false,
   warnings: [],
   message: { tone: "info", text: "可直接编辑 Mermaid 文本" },
+  currentDocumentId: undefined,
+  currentDocumentTitle: "未命名图表",
+  documentSyncState: "saved",
+  lastSavedAt: undefined,
+  recentDocuments: [],
   inlineEditSession: undefined,
   selectedNodeIds: [],
   selectedEdgeIds: [],
@@ -159,21 +187,40 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   init: () => {
     const uiPreset = readUiPresetFromUrl();
-    get().setUiPreset(uiPreset);
-    const restored = loadDraftSnapshot();
-    if (restored) {
-      get().replaceModel(restored.model, "已恢复本地草稿", { recordHistory: false });
-      set({
-        code: restored.code,
-        codeDirty: restored.codeDirty,
-        persistenceReady: true,
-        warnings: [],
-        fitViewTick: Date.now(),
-      });
+    const boot = loadBootDocument();
+    writeUiPresetToUrl(uiPreset);
+    set((state) => ({
+      ...state,
+      ...buildDocumentEditorState(boot.document, boot.message),
+      interaction: {
+        ...state.interaction,
+        uiPreset,
+      },
+      persistenceReady: true,
+      fitViewTick: Date.now(),
+      toastTick: 0,
+    }));
+  },
+
+  saveCurrentDocument: () => {
+    const state = get();
+    if (!state.currentDocumentId) {
       return;
     }
-    get().loadSample({ recordHistory: false });
-    set({ persistenceReady: true });
+
+    set({ documentSyncState: "saving" });
+    const nextSavedAt = new Date().toISOString();
+    const document = createStoredDocumentSnapshot(state, {
+      updatedAt: nextSavedAt,
+      lastOpenedAt: nextSavedAt,
+    });
+    saveStoredDocument(document);
+    saveWorkspaceState({ version: 1, lastOpenedDocumentId: document.id });
+    set({
+      documentSyncState: "saved",
+      lastSavedAt: nextSavedAt,
+      recentDocuments: listStoredDocuments(),
+    });
   },
 
   setZoom: (zoom) => set({ zoom }),
@@ -188,6 +235,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ...(state.codeDirty ? {} : pushHistory(state)),
         code,
         codeDirty: true,
+        documentSyncState: state.currentDocumentId ? "dirty" : state.documentSyncState,
         message: { tone: "info", text: "正在同步 Mermaid 文本" },
         pendingRenderTick: Date.now(),
       };
@@ -249,9 +297,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   syncCodeFromModel: () => {
-    const model = get().model;
+    const state = get();
+    const model = state.model;
     const code = serializeMermaidFlowchartV2(model);
-    set({ code, codeDirty: false, warnings: [], pendingRenderTick: Date.now() });
+    set({
+      code,
+      codeDirty: false,
+      warnings: [],
+      pendingRenderTick: Date.now(),
+      documentSyncState: state.currentDocumentId ? "dirty" : state.documentSyncState,
+    });
   },
 
   applyCodeToModel: async (options = {}) => {
@@ -277,6 +332,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       model: layouted,
       warnings: parsed.warnings,
       codeDirty: false,
+      documentSyncState: get().currentDocumentId ? "dirty" : get().documentSyncState,
       inlineEditSession: undefined,
       selectedNodeIds: [],
       selectedEdgeIds: [],
@@ -308,6 +364,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       reconnectingEdgeId: undefined,
       reconnectingEndpoint: undefined,
       codeDirty: false,
+      documentSyncState: get().currentDocumentId ? "dirty" : get().documentSyncState,
       message: { tone: "success", text: note },
       pendingRenderTick: Date.now(),
       toastTick: Date.now(),
@@ -315,24 +372,151 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().syncCodeFromModel();
   },
 
-  newDocument: () => {
-    set((state) => ({
-      ...pushHistory(state),
-      model: createEmptyModel(),
-      code: `flowchart ${DEFAULT_DIRECTION}`,
-      codeDirty: false,
-      warnings: [],
-      inlineEditSession: undefined,
-      selectedNodeIds: [],
-      selectedEdgeIds: [],
-      selectedGroupIds: [],
-      reconnectingEdgeId: undefined,
-      reconnectingEndpoint: undefined,
-      message: { tone: "success", text: "已新建图表" },
-      pendingRenderTick: Date.now(),
+  createDocument: () => {
+    get().saveCurrentDocument();
+    const document = createUntitledDocument(get().recentDocuments);
+    saveStoredDocument(document);
+    saveWorkspaceState({ version: 1, lastOpenedDocumentId: document.id });
+    set({
+      ...buildDocumentEditorState(document, "已新建图表"),
       fitViewTick: Date.now(),
       toastTick: Date.now(),
+    });
+  },
+
+  renameCurrentDocument: (title) => {
+    const nextTitle = normalizeDocumentTitle(title);
+    set((state) => ({
+      currentDocumentTitle: nextTitle,
+      documentSyncState: state.currentDocumentId ? "dirty" : state.documentSyncState,
+      recentDocuments: updateRecentDocumentSummary(state.recentDocuments, state.currentDocumentId, {
+        title: nextTitle,
+      }),
     }));
+  },
+
+  duplicateCurrentDocument: () => {
+    get().saveCurrentDocument();
+    const state = get();
+    const nextSavedAt = new Date().toISOString();
+    const document: StoredEditorDocumentV1 = {
+      version: 1,
+      id: createDocumentId(),
+      title: `${state.currentDocumentTitle} 副本`,
+      createdAt: nextSavedAt,
+      updatedAt: nextSavedAt,
+      lastOpenedAt: nextSavedAt,
+      code: state.code,
+      codeDirty: state.codeDirty,
+      model: structuredClone(state.model),
+    };
+    saveStoredDocument(document);
+    saveWorkspaceState({ version: 1, lastOpenedDocumentId: document.id });
+    set({
+      ...buildDocumentEditorState(document, "已创建副本"),
+      fitViewTick: Date.now(),
+      toastTick: Date.now(),
+    });
+  },
+
+  switchDocument: (documentId) => {
+    get().saveCurrentDocument();
+    const document = loadStoredDocument(documentId);
+    if (!document) {
+      set({
+        message: { tone: "error", text: "未找到要打开的文档" },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    const opened = touchStoredDocument(document);
+    set({
+      ...buildDocumentEditorState(opened, `已打开 ${opened.title}`),
+      fitViewTick: Date.now(),
+      toastTick: Date.now(),
+    });
+  },
+
+  importMermaidDocument: async (fileName, text) => {
+    get().saveCurrentDocument();
+    const nextCode = normalizeOpenedMermaidText(text);
+    if (!nextCode) {
+      set({
+        message: { tone: "error", text: "Mermaid 内容为空，导入已取消" },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    const parsed = parseMermaidFlowchartV2(nextCode);
+    if (parsed.errors.length > 0) {
+      set({
+        warnings: parsed.errors,
+        message: { tone: "error", text: parsed.errors[0] },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    const layouted = await applyElkLayout(parsed.model, {
+      direction: parsed.model.direction,
+      layerSpacing: 100,
+      nodeSpacing: 56,
+    });
+
+    const document = createStoredDocumentRecord({
+      title: titleFromFileName(fileName),
+      code: nextCode,
+      codeDirty: false,
+      model: layouted,
+    });
+    saveStoredDocument(document);
+    saveWorkspaceState({ version: 1, lastOpenedDocumentId: document.id });
+    set({
+      ...buildDocumentEditorState(document, "已导入 Mermaid 文件"),
+      fitViewTick: Date.now(),
+      toastTick: Date.now(),
+    });
+  },
+
+  importDrawioDocument: (fileName, xmlText) => {
+    get().saveCurrentDocument();
+    if (!xmlText.trim()) {
+      set({
+        message: { tone: "error", text: "XML 内容为空，导入已取消" },
+        toastTick: Date.now(),
+      });
+      return;
+    }
+
+    try {
+      const imported = importDrawioXml(xmlText);
+      const document = createStoredDocumentRecord({
+        title: titleFromFileName(fileName),
+        code: serializeMermaidFlowchartV2(imported.model),
+        codeDirty: false,
+        model: imported.model,
+      });
+      saveStoredDocument(document);
+      saveWorkspaceState({ version: 1, lastOpenedDocumentId: document.id });
+      set({
+        ...buildDocumentEditorState(document, "已导入 draw.io 文件"),
+        fitViewTick: Date.now(),
+        toastTick: Date.now(),
+      });
+    } catch (error) {
+      const message =
+        error instanceof ImportDrawioError ? error.message : "导入 XML 失败，请检查内容格式";
+      set({
+        message: { tone: "error", text: message },
+        toastTick: Date.now(),
+      });
+    }
+  },
+
+  newDocument: () => {
+    get().createDocument();
   },
 
   openMermaidText: async (text) => {
@@ -366,6 +550,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       model: layouted,
       code: nextCode,
       codeDirty: false,
+      documentSyncState: state.currentDocumentId ? "dirty" : state.documentSyncState,
       warnings: parsed.warnings,
       inlineEditSession: undefined,
       selectedNodeIds: [],
@@ -384,10 +569,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   downloadExport: (format) => {
-    const model = get().model;
+    const { model, currentDocumentTitle } = get();
 
     try {
-      downloadTextFile(defaultFilenameFor(format), buildExportText(format, model), exportMimeTypeFor(format));
+      downloadTextFile(
+        defaultFilenameFor(format, currentDocumentTitle),
+        buildExportText(format, model),
+        exportMimeTypeFor(format),
+      );
       set({
         message: {
           tone: "success",
@@ -1161,6 +1350,174 @@ function restoreHistorySnapshot(snapshot: HistorySnapshot): Pick<EditorState, "m
     codeDirty: snapshot.codeDirty,
     warnings: [...snapshot.warnings],
   };
+}
+
+function loadBootDocument(): { document: StoredEditorDocumentV1; message: string } {
+  const recentDocuments = listStoredDocuments();
+  if (recentDocuments.length > 0) {
+    const workspace = loadWorkspaceState();
+    const preferredId = workspace?.lastOpenedDocumentId;
+    const preferredDocument = preferredId ? loadStoredDocument(preferredId) : null;
+    const fallbackDocument = loadStoredDocument(recentDocuments[0].id);
+    const resolved = preferredDocument ?? fallbackDocument;
+    if (resolved) {
+      return {
+        document: touchStoredDocument(resolved),
+        message: `已打开 ${resolved.title}`,
+      };
+    }
+  }
+
+  const migrated = migrateLegacyDraftToStoredDocument("未命名图表");
+  if (migrated) {
+    return {
+      document: migrated,
+      message: "已恢复本地草稿",
+    };
+  }
+
+  const document = createStoredDocumentRecord({
+    title: "未命名图表",
+    code: serializeMermaidFlowchartV2(createSampleModel()),
+    codeDirty: false,
+    model: createSampleModel(),
+  });
+  saveStoredDocument(document);
+  saveWorkspaceState({ version: 1, lastOpenedDocumentId: document.id });
+  return {
+    document,
+    message: "已加载示例",
+  };
+}
+
+function buildDocumentEditorState(document: StoredEditorDocumentV1, message: string) {
+  const recentDocuments = listStoredDocuments();
+  return {
+    model: structuredClone(document.model),
+    code: document.code,
+    codeDirty: document.codeDirty,
+    warnings: [],
+    currentDocumentId: document.id,
+    currentDocumentTitle: document.title,
+    documentSyncState: "saved" as const,
+    lastSavedAt: document.updatedAt,
+    recentDocuments: prioritizeCurrentDocument(recentDocuments, document.id),
+    inlineEditSession: undefined,
+    selectedNodeIds: [],
+    selectedEdgeIds: [],
+    selectedGroupIds: [],
+    reconnectingEdgeId: undefined,
+    reconnectingEndpoint: undefined,
+    past: [],
+    future: [],
+    message: { tone: "success" as const, text: message },
+    pendingRenderTick: Date.now(),
+  };
+}
+
+function createStoredDocumentSnapshot(
+  state: Pick<EditorState, "currentDocumentId" | "currentDocumentTitle" | "code" | "codeDirty" | "model" | "lastSavedAt">,
+  times: { updatedAt: string; lastOpenedAt: string },
+): StoredEditorDocumentV1 {
+  const existing = state.currentDocumentId ? loadStoredDocument(state.currentDocumentId) : null;
+  const createdAt = existing?.createdAt ?? state.lastSavedAt ?? times.updatedAt;
+  return {
+    version: 1,
+    id: state.currentDocumentId ?? createDocumentId(),
+    title: normalizeDocumentTitle(state.currentDocumentTitle),
+    createdAt,
+    updatedAt: times.updatedAt,
+    lastOpenedAt: times.lastOpenedAt,
+    code: state.code,
+    codeDirty: state.codeDirty,
+    model: structuredClone(state.model),
+  };
+}
+
+function createStoredDocumentRecord(input: {
+  title: string;
+  code: string;
+  codeDirty: boolean;
+  model: DiagramModel;
+}): StoredEditorDocumentV1 {
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    id: createDocumentId(),
+    title: normalizeDocumentTitle(input.title),
+    createdAt: now,
+    updatedAt: now,
+    lastOpenedAt: now,
+    code: input.code,
+    codeDirty: input.codeDirty,
+    model: structuredClone(input.model),
+  };
+}
+
+function createUntitledDocument(recentDocuments: EditorDocumentSummary[]): StoredEditorDocumentV1 {
+  return createStoredDocumentRecord({
+    title: nextUntitledDocumentTitle(recentDocuments),
+    code: `flowchart ${DEFAULT_DIRECTION}`,
+    codeDirty: false,
+    model: createEmptyModel(),
+  });
+}
+
+function touchStoredDocument(document: StoredEditorDocumentV1): StoredEditorDocumentV1 {
+  const touched = {
+    ...document,
+    lastOpenedAt: new Date().toISOString(),
+  };
+  saveStoredDocument(touched);
+  saveWorkspaceState({ version: 1, lastOpenedDocumentId: touched.id });
+  return touched;
+}
+
+function updateRecentDocumentSummary(
+  recentDocuments: EditorDocumentSummary[],
+  documentId: string | undefined,
+  patch: Partial<EditorDocumentSummary>,
+): EditorDocumentSummary[] {
+  if (!documentId) {
+    return recentDocuments;
+  }
+
+  return recentDocuments.map((document) => (document.id === documentId ? { ...document, ...patch } : document));
+}
+
+function normalizeDocumentTitle(title: string): string {
+  return title.trim() || "未命名图表";
+}
+
+function prioritizeCurrentDocument(recentDocuments: EditorDocumentSummary[], documentId: string): EditorDocumentSummary[] {
+  const current = recentDocuments.find((document) => document.id === documentId);
+  if (!current) {
+    return recentDocuments;
+  }
+
+  return [current, ...recentDocuments.filter((document) => document.id !== documentId)];
+}
+
+function nextUntitledDocumentTitle(recentDocuments: EditorDocumentSummary[]): string {
+  const untitledTitles = new Set(recentDocuments.map((document) => document.title));
+  if (!untitledTitles.has("未命名图表")) {
+    return "未命名图表";
+  }
+
+  let index = 2;
+  while (untitledTitles.has(`未命名图表 ${index}`)) {
+    index += 1;
+  }
+  return `未命名图表 ${index}`;
+}
+
+function createDocumentId(): string {
+  return `doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function titleFromFileName(fileName: string): string {
+  const normalized = fileName.replace(/\.[^.]+$/, "");
+  return normalizeDocumentTitle(normalized);
 }
 
 function pushHistory(

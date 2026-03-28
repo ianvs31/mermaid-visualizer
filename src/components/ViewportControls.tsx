@@ -5,12 +5,8 @@ interface ViewportControlsProps {
   zoom: number;
   snapToGrid: boolean;
   onToggleSnap: () => void;
-  onNewDocument: () => void;
   onCopyExport: (format: "drawio-xml" | "editor-json" | "markdown-mermaid") => void;
-  onDownloadExport: (format: "drawio-xml" | "editor-json" | "markdown-mermaid") => void;
-  onImportMermaidFile: (file: File) => void;
   onImportXmlText: (xmlText: string) => void;
-  onImportXmlFile: (file: File) => void;
   onFitView: () => void;
   onReset: () => void;
   onZoomOut: () => void;
@@ -21,12 +17,8 @@ export function ViewportControls({
   zoom,
   snapToGrid,
   onToggleSnap,
-  onNewDocument,
   onCopyExport,
-  onDownloadExport,
-  onImportMermaidFile,
   onImportXmlText,
-  onImportXmlFile,
   onFitView,
   onReset,
   onZoomOut,
@@ -78,21 +70,11 @@ export function ViewportControls({
             zoom={zoom}
             snapToGrid={snapToGrid}
             onToggleSnap={onToggleSnap}
-            onNewDocument={onNewDocument}
             onCopyExport={(format) => {
               onCopyExport(format);
             }}
-            onDownloadExport={onDownloadExport}
-            onImportMermaidFile={(file) => {
-              onImportMermaidFile(file);
-              setHelpOpen(false);
-            }}
             onImportXmlText={(xmlText) => {
               onImportXmlText(xmlText);
-              setHelpOpen(false);
-            }}
-            onImportXmlFile={(file) => {
-              onImportXmlFile(file);
               setHelpOpen(false);
             }}
           />

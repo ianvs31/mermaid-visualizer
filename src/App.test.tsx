@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import mermaid from "mermaid";
 import App from "./App";
+import { loadStoredDocument, saveStoredDocument, saveWorkspaceState } from "./app/document-persistence";
 import { useEditorStore } from "./app/store";
 
 const IMPORTABLE_DRAWIO_XML = `<mxGraphModel><root>
@@ -73,11 +74,41 @@ describe("App", () => {
     expect(useEditorStore.getState().message.text).toContain("恢复");
   }, 15000);
 
-  it("persists edited drafts through the app-level persistence hook", async () => {
+  it("shows the current browser-local document identity in the document bar", async () => {
+    saveStoredDocument({
+      version: 1,
+      id: "doc-1",
+      title: "最近文档",
+      createdAt: "2026-03-28T10:00:00.000Z",
+      updatedAt: "2026-03-28T10:10:00.000Z",
+      lastOpenedAt: "2026-03-28T10:15:00.000Z",
+      code: "flowchart LR\nB-->C",
+      codeDirty: false,
+      model: {
+        version: 2,
+        direction: "LR",
+        rawPassthroughStatements: [],
+        groups: [],
+        nodes: [
+          { id: "B", type: "start", label: "开始", x: 80, y: 120, width: 130, height: 66 },
+          { id: "C", type: "process", label: "继续", x: 280, y: 120, width: 148, height: 72 },
+        ],
+        edges: [{ id: "E1", from: "B", to: "C", label: "", strokePattern: "solid" }],
+      },
+    });
+    saveWorkspaceState({ version: 1, lastOpenedDocumentId: "doc-1" });
+
+    render(<App />);
+
+    expect(await screen.findByRole("textbox", { name: "文档标题" })).toHaveValue("最近文档");
+    expect(await screen.findByText("已保存")).toBeInTheDocument();
+  }, 15000);
+
+  it("persists edited document changes through the app-level persistence hook", async () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    const targetNode = container.querySelector('.react-flow__node[data-model-id="N1"]');
     expect(targetNode).not.toBeNull();
 
     fireEvent.doubleClick(targetNode!);
@@ -92,10 +123,24 @@ describe("App", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      const draft = JSON.parse(localStorage.getItem("mv:draft") ?? "{}");
-      expect(draft.code).toContain("N1([启动])");
-      expect(draft.codeDirty).toBe(false);
-      expect(draft.version).toBe(1);
+      const currentId = useEditorStore.getState().currentDocumentId;
+      expect(currentId).toBeTruthy();
+      expect(loadStoredDocument(currentId!)?.code).toContain("N1([启动])");
+      expect(loadStoredDocument(currentId!)?.codeDirty).toBe(false);
+    });
+  }, 15000);
+
+  it("persists renamed document titles through the app-level autosave flow", async () => {
+    render(<App />);
+
+    const titleInput = await screen.findByRole("textbox", { name: "文档标题" });
+    fireEvent.change(titleInput, { target: { value: "新的流程图" } });
+    fireEvent.blur(titleInput);
+
+    await waitFor(() => {
+      const currentId = useEditorStore.getState().currentDocumentId;
+      expect(currentId).toBeTruthy();
+      expect(loadStoredDocument(currentId!)?.title).toBe("新的流程图");
     });
   }, 15000);
 
@@ -146,14 +191,14 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    const targetNode = container.querySelector('.react-flow__node[data-model-id="N1"]');
     expect(targetNode).not.toBeNull();
 
     fireEvent.click(targetNode!);
     fireEvent.keyDown(window, { key: "Delete" });
 
     await waitFor(() => {
-      expect(container.querySelector('.react-flow__node[data-id="N1"]')).toBeNull();
+      expect(container.querySelector('.react-flow__node[data-model-id="N1"]')).toBeNull();
     });
   }, 15000);
 
@@ -167,7 +212,7 @@ describe("App", () => {
     });
 
     const targetNode = await waitFor(() => {
-      const element = container.querySelector('.react-flow__node[data-id="N1"]');
+      const element = container.querySelector('.react-flow__node[data-model-id="N1"]');
       expect(element).not.toBeNull();
       return element;
     });
@@ -177,7 +222,7 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "x", ctrlKey: true });
 
     await waitFor(() => {
-      expect(container.querySelector('.react-flow__node[data-id="N1"]')).toBeNull();
+      expect(container.querySelector('.react-flow__node[data-model-id="N1"]')).toBeNull();
     });
   }, 15000);
 
@@ -185,7 +230,7 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    const targetNode = container.querySelector('.react-flow__node[data-model-id="N1"]');
     expect(targetNode).not.toBeNull();
 
     fireEvent.doubleClick(targetNode!);
@@ -208,7 +253,7 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    const targetNode = container.querySelector('.react-flow__node[data-model-id="N1"]');
     expect(targetNode).not.toBeNull();
 
     fireEvent.doubleClick(targetNode!);
@@ -234,7 +279,7 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("业务侧", {}, { timeout: 12000 });
 
-    const groupNode = container.querySelector('.react-flow__node[data-id="G1"]');
+    const groupNode = container.querySelector('.react-flow__node[data-model-id="G1"]');
     expect(groupNode).not.toBeNull();
 
     fireEvent.doubleClick(groupNode!);
@@ -324,7 +369,7 @@ describe("App", () => {
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
     const edge = await waitFor(() => {
-      const element = container.querySelector('.react-flow__edge[data-id="E1"]');
+      const element = container.querySelector('.react-flow__edge[data-model-id="E1"]');
       expect(element).not.toBeNull();
       return element as Element;
     });
@@ -345,9 +390,9 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(useEditorStore.getState().model.groups.find((group) => group.id === "G1")?.collapsed).toBe(true);
-      expect(container.querySelector('.react-flow__node[data-id="N1"]')).toBeNull();
-      expect(container.querySelector('.react-flow__node[data-id="N2"]')).toBeNull();
-      expect(container.querySelector('.react-flow__edge[data-id="E1"]')).toBeNull();
+      expect(container.querySelector('.react-flow__node[data-model-id="N1"]')).toBeNull();
+      expect(container.querySelector('.react-flow__node[data-model-id="N2"]')).toBeNull();
+      expect(container.querySelector('.react-flow__edge[data-model-id="E1"]')).toBeNull();
     });
   }, 15000);
 
@@ -355,8 +400,8 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N4"]');
-    const targetGroup = container.querySelector('.react-flow__node[data-id="G1"]');
+    const targetNode = container.querySelector('.react-flow__node[data-model-id="N4"]');
+    const targetGroup = container.querySelector('.react-flow__node[data-model-id="G1"]');
     expect(targetNode).not.toBeNull();
     expect(targetGroup).not.toBeNull();
 
@@ -382,7 +427,7 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    const targetNode = container.querySelector('.react-flow__node[data-model-id="N1"]');
     expect(targetNode).not.toBeNull();
 
     fireEvent.click(targetNode!);
@@ -404,7 +449,7 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const targetNode = container.querySelector('.react-flow__node[data-id="N1"]');
+    const targetNode = container.querySelector('.react-flow__node[data-model-id="N1"]');
     expect(targetNode).not.toBeNull();
 
     fireEvent.click(targetNode!);
@@ -430,8 +475,8 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    const node1 = container.querySelector('.react-flow__node[data-id="N1"]');
-    const node2 = container.querySelector('.react-flow__node[data-id="N2"]');
+    const node1 = container.querySelector('.react-flow__node[data-model-id="N1"]');
+    const node2 = container.querySelector('.react-flow__node[data-model-id="N2"]');
     expect(node1).not.toBeNull();
     expect(node2).not.toBeNull();
 
@@ -472,7 +517,6 @@ describe("App", () => {
     const promptSpy = vi.spyOn(window, "prompt").mockReturnValue(IMPORTABLE_DRAWIO_XML);
 
     fireEvent.click(screen.getByRole("button", { name: "帮助与导出" }));
-    expect(screen.getByRole("button", { name: "导入 draw.io 文件" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "粘贴 draw.io XML" }));
 
     await waitFor(() => {
@@ -485,41 +529,49 @@ describe("App", () => {
     promptSpy.mockRestore();
   }, 15000);
 
-  it("offers new, open, and download actions from the help/file controls", async () => {
+  it("keeps only document identity controls in the right sidebar", async () => {
     render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
-    fireEvent.click(screen.getByRole("button", { name: "帮助与导出" }));
-
-    expect(screen.getByRole("button", { name: "新建图表" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 Mermaid 文件" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 draw.io 文件" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "下载 Mermaid" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "下载 draw.io XML" })).toBeInTheDocument();
+    expect(document.querySelector(".document-bar")).toBeNull();
+    expect(screen.getByRole("complementary")).toHaveTextContent("文档");
+    expect(screen.getByRole("complementary")).toHaveTextContent("Mermaid");
+    expect(screen.queryByText("侧边栏")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "文档标题" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "最近文档" })).toBeInTheDocument();
+    expect(screen.queryByText("文档操作")).toBeNull();
+    expect(screen.queryByRole("button", { name: "新建文档" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "创建副本" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "导入 Mermaid" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "导入 draw.io" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下载 Mermaid" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "draw.io" })).toBeNull();
   }, 15000);
 
-  it("honors the overwrite confirmation guard when creating a new document", async () => {
+  it("switches documents from the sidebar recent-documents control", async () => {
     render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
     const before = useEditorStore.getState().code;
-    const confirmSpy = vi.spyOn(window, "confirm");
-    confirmSpy.mockReturnValueOnce(false);
-
-    fireEvent.click(screen.getByRole("button", { name: "帮助与导出" }));
-    fireEvent.click(screen.getByRole("button", { name: "新建图表" }));
-
-    expect(useEditorStore.getState().code).toBe(before);
-    expect(useEditorStore.getState().model.nodes.length).toBeGreaterThan(0);
-
-    confirmSpy.mockReturnValueOnce(true);
-    fireEvent.click(screen.getByRole("button", { name: "新建图表" }));
+    const previousId = useEditorStore.getState().currentDocumentId;
+    act(() => {
+      useEditorStore.getState().createDocument();
+    });
 
     await waitFor(() => {
+      expect(useEditorStore.getState().currentDocumentId).not.toBe(previousId);
       expect(useEditorStore.getState().code).toBe("flowchart LR");
-      expect(useEditorStore.getState().model.nodes).toHaveLength(0);
       expect(useEditorStore.getState().message.text).toContain("新建");
+    });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "最近文档" }), {
+      target: { value: previousId },
+    });
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().currentDocumentId).toBe(previousId);
+      expect(useEditorStore.getState().code).toBe(before);
     });
   }, 15000);
 

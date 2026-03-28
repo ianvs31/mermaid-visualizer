@@ -1,55 +1,24 @@
-import { useRef, type ChangeEvent } from "react";
-
 interface HelpExportPopoverProps {
   zoom: number;
   snapToGrid: boolean;
   onToggleSnap: () => void;
-  onNewDocument: () => void;
   onCopyExport: (format: "drawio-xml" | "editor-json" | "markdown-mermaid") => void;
-  onDownloadExport: (format: "drawio-xml" | "editor-json" | "markdown-mermaid") => void;
-  onImportMermaidFile: (file: File) => void;
   onImportXmlText: (xmlText: string) => void;
-  onImportXmlFile: (file: File) => void;
 }
 
 export function HelpExportPopover({
   zoom,
   snapToGrid,
   onToggleSnap,
-  onNewDocument,
   onCopyExport,
-  onDownloadExport,
-  onImportMermaidFile,
   onImportXmlText,
-  onImportXmlFile,
 }: HelpExportPopoverProps) {
-  const mermaidFileInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handlePasteImport = () => {
     const xmlText = window.prompt("请粘贴 draw.io XML（mxGraphModel 或 mxfile）");
     if (xmlText === null) {
       return;
     }
     onImportXmlText(xmlText);
-  };
-
-  const handleMermaidFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
-      return;
-    }
-    onImportMermaidFile(file);
-  };
-
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
-      return;
-    }
-    onImportXmlFile(file);
   };
 
   return (
@@ -74,34 +43,6 @@ export function HelpExportPopover({
       </section>
 
       <section className="help-export-popover__section">
-        <div className="help-export-popover__title">文件</div>
-        <button className="help-export-popover__action" onClick={onNewDocument}>新建图表</button>
-        <button className="help-export-popover__action" onClick={() => mermaidFileInputRef.current?.click()}>
-          打开 Mermaid 文件
-        </button>
-        <button className="help-export-popover__action" onClick={() => fileInputRef.current?.click()}>
-          打开 draw.io 文件
-        </button>
-        <button className="help-export-popover__action" onClick={() => onDownloadExport("markdown-mermaid")}>下载 Mermaid</button>
-        <button className="help-export-popover__action" onClick={() => onDownloadExport("editor-json")}>下载 JSON</button>
-        <button className="help-export-popover__action" onClick={() => onDownloadExport("drawio-xml")}>下载 draw.io XML</button>
-        <input
-          ref={mermaidFileInputRef}
-          type="file"
-          accept=".mmd,.mermaid,.md,.txt,text/plain,text/markdown"
-          hidden
-          onChange={handleMermaidFileChange}
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xml,.drawio,text/xml,application/xml"
-          hidden
-          onChange={handleFileChange}
-        />
-      </section>
-
-      <section className="help-export-popover__section">
         <div className="help-export-popover__title">导出复制</div>
         <button className="help-export-popover__action" onClick={() => onCopyExport("drawio-xml")}>复制 draw.io XML</button>
         <button className="help-export-popover__action" onClick={() => onCopyExport("editor-json")}>复制 JSON</button>
@@ -109,10 +50,11 @@ export function HelpExportPopover({
       </section>
 
       <section className="help-export-popover__section">
-        <div className="help-export-popover__title">导入 XML</div>
-        <button className="help-export-popover__action" onClick={() => fileInputRef.current?.click()}>
-          导入 draw.io 文件
-        </button>
+        <div className="help-export-popover__title">文档提示</div>
+        <div className="help-export-popover__row">
+          <span>标题 / 最近文档</span>
+          <strong>右侧文档区</strong>
+        </div>
         <button className="help-export-popover__action" onClick={handlePasteImport}>
           粘贴 draw.io XML
         </button>

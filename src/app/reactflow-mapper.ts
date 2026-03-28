@@ -21,13 +21,20 @@ export interface FlowMapOptions {
   selectedEdgeIds?: string[];
   selectedGroupIds?: string[];
   connectingNodeId?: string | null;
+  flowNamespace?: string;
   onGroupResizeEnd?: (groupId: string, width: number, height: number) => void;
   onToggleGroupCollapse?: (groupId: string) => void;
 }
 
+const DEFAULT_FLOW_NAMESPACE = "boot";
+const FLOW_ID_SEPARATOR = "::";
+
+type FlowElementKind = "node" | "group" | "edge";
+
 export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions = {}): FlowElementSet {
   const groupMap = new Map(model.groups.map((group) => [group.id, group]));
   const visibility = buildGroupVisibility(model);
+  const flowNamespace = options.flowNamespace ?? DEFAULT_FLOW_NAMESPACE;
   const selectedNodeIds = new Set(options.selectedNodeIds || []);
   const selectedEdgeIds = new Set(options.selectedEdgeIds || []);
   const selectedGroupIds = new Set(options.selectedGroupIds || []);
@@ -46,9 +53,10 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
       (parent ? visibility.hiddenGroupIds.has(parent.id) || visibility.collapsedGroupIds.has(parent.id) : false);
 
     nodes.push({
-      id: group.id,
+      id: toFlowElementId(flowNamespace, "group", group.id),
       type: "groupNode",
       data: {
+        groupId: group.id,
         title: group.title,
         groupType: group.type,
         collapsed: !!group.collapsed,
@@ -57,7 +65,7 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
         onToggleCollapse: options.onToggleGroupCollapse,
       },
       position: toRelativePosition(group.x, group.y, parent),
-      parentId: parent?.id,
+      parentId: parent ? toFlowElementId(flowNamespace, "group", parent.id) : undefined,
       extent: parent ? "parent" : undefined,
       draggable: true,
       selectable: true,
@@ -68,6 +76,7 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
         zIndex: 1,
         pointerEvents: "none",
       },
+      domAttributes: createNodeDomAttributes(group.id, "group"),
       className: group.type === "swimlane" ? "rf-group rf-group--lane" : "rf-group rf-group--subgraph",
       hidden,
     });
@@ -84,7 +93,7 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
     };
 
     nodes.push({
-      id: node.id,
+      id: toFlowElementId(flowNamespace, "node", node.id),
       type: "flowNode",
       data: {
         nodeId: node.id,
@@ -97,7 +106,7 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
           options.connectingNodeId !== node.id,
       },
       position: toRelativePosition(node.x, node.y, parent),
-      parentId: parent?.id,
+      parentId: parent ? toFlowElementId(flowNamespace, "group", parent.id) : undefined,
       className: `rf-node rf-node--${node.type}`,
       hidden,
       draggable: true,
@@ -144,12 +153,13 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
         },
       ],
       style: { zIndex: 4 },
+      domAttributes: createNodeDomAttributes(node.id, "node"),
     });
   }
 
   const edges: Edge[] = model.edges.map((edge) => {
     const hidden = visibility.hiddenEdgeIds.has(edge.id);
-    return edgeToFlow(edge, hidden, selectedEdgeIds.has(edge.id));
+    return edgeToFlow(edge, hidden, selectedEdgeIds.has(edge.id), flowNamespace);
   });
 
   return { nodes, edges };
@@ -170,11 +180,11 @@ export function applyFlowNodePosition(
   };
 }
 
-function edgeToFlow(edge: DiagramEdge, hidden: boolean, selected: boolean): Edge {
+function edgeToFlow(edge: DiagramEdge, hidden: boolean, selected: boolean, flowNamespace: string): Edge {
   return {
-    id: edge.id,
-    source: edge.from,
-    target: edge.to,
+    id: toFlowElementId(flowNamespace, "edge", edge.id),
+    source: toFlowElementId(flowNamespace, "node", edge.from),
+    target: toFlowElementId(flowNamespace, "node", edge.to),
     label: edge.label,
     type: "flowEdge",
     sourceHandle: edge.sourceHandle ?? "right",
@@ -182,9 +192,11 @@ function edgeToFlow(edge: DiagramEdge, hidden: boolean, selected: boolean): Edge
     animated: false,
     className: "rf-edge",
     data: {
+      edgeId: edge.id,
       hiddenByCollapsedGroup: hidden,
       showEndpointHints: selected,
     },
+    domAttributes: createEdgeDomAttributes(edge.id),
     interactionWidth: 28,
     style: {
       strokeWidth: 2,
@@ -225,5 +237,83 @@ function toRelativePosition(
   return {
     x: x - parent.x,
     y: y - parent.y,
+  };
+}
+
+export function getFlowNamespace(documentId?: string): string {
+  return documentId || DEFAULT_FLOW_NAMESPACE;
+}
+
+function createNodeDomAttributes(modelId: string, kind: "node" | "group"): NonNullable<Node["domAttributes"]> {
+  return {
+    ["data-model-id"]: modelId,
+    ["data-model-kind"]: kind,
+  } as NonNullable<Node["domAttributes"]>;
+}
+
+function createEdgeDomAttributes(modelId: string): NonNullable<Edge["domAttributes"]> {
+  return {
+    ["data-model-id"]: modelId,
+    ["data-model-kind"]: "edge",
+  } as NonNullable<Edge["domAttributes"]>;
+}
+
+export function getModelNodeId(source: { id?: string; data?: unknown } | string | null | undefined): string | undefined {
+  if (typeof source === "string") {
+    const parsed = parseFlowElementId(source);
+    return parsed?.kind === "node" ? parsed.modelId : undefined;
+  }
+
+  const typedData = source?.data as { nodeId?: unknown } | undefined;
+  return typeof typedData?.nodeId === "string" ? typedData.nodeId : getModelNodeId(source?.id);
+}
+
+export function getModelGroupId(source: { id?: string; data?: unknown } | string | null | undefined): string | undefined {
+  if (typeof source === "string") {
+    const parsed = parseFlowElementId(source);
+    return parsed?.kind === "group" ? parsed.modelId : undefined;
+  }
+
+  const typedData = source?.data as { groupId?: unknown } | undefined;
+  return typeof typedData?.groupId === "string" ? typedData.groupId : getModelGroupId(source?.id);
+}
+
+export function getModelEdgeId(source: { id?: string; data?: unknown } | string | null | undefined): string | undefined {
+  if (typeof source === "string") {
+    const parsed = parseFlowElementId(source);
+    return parsed?.kind === "edge" ? parsed.modelId : undefined;
+  }
+
+  const typedData = source?.data as { edgeId?: unknown } | undefined;
+  return typeof typedData?.edgeId === "string" ? typedData.edgeId : getModelEdgeId(source?.id);
+}
+
+function toFlowElementId(namespace: string, kind: FlowElementKind, modelId: string): string {
+  return `${namespace}${FLOW_ID_SEPARATOR}${kind}${FLOW_ID_SEPARATOR}${modelId}`;
+}
+
+function parseFlowElementId(flowId?: string | null): { namespace: string; kind: FlowElementKind; modelId: string } | null {
+  if (!flowId) {
+    return null;
+  }
+
+  const firstSeparator = flowId.indexOf(FLOW_ID_SEPARATOR);
+  const secondSeparator = flowId.indexOf(FLOW_ID_SEPARATOR, firstSeparator + FLOW_ID_SEPARATOR.length);
+  if (firstSeparator < 0 || secondSeparator < 0) {
+    return null;
+  }
+
+  const namespace = flowId.slice(0, firstSeparator);
+  const kind = flowId.slice(firstSeparator + FLOW_ID_SEPARATOR.length, secondSeparator);
+  const modelId = flowId.slice(secondSeparator + FLOW_ID_SEPARATOR.length);
+
+  if ((kind !== "node" && kind !== "group" && kind !== "edge") || !modelId) {
+    return null;
+  }
+
+  return {
+    namespace,
+    kind,
+    modelId,
   };
 }

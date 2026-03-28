@@ -21,7 +21,7 @@ test.describe("FigJam interaction preset", () => {
     await page.getByRole("button", { name: "起止" }).click();
     await page.locator(".react-flow__pane").click({ position: { x: 24, y: 24 } });
 
-    const node = page.locator('.react-flow__node[data-id="N1"] .diagram-node-host');
+    const node = page.locator('.react-flow__node[data-model-id="N1"] .diagram-node-host');
     const quickConnect = node.getByRole("button", { name: "快速连接 right" });
 
     await expect(node).toHaveAttribute("data-interaction-active", "false");
@@ -49,7 +49,7 @@ test.describe("FigJam interaction preset", () => {
     await page.evaluate(() => localStorage.clear());
     await page.reload();
 
-    const node = page.locator('.react-flow__node[data-id="N3"] .diagram-node-host');
+    const node = page.locator('.react-flow__node[data-model-id="N3"] .diagram-node-host');
     const diamond = node.locator(".diagram-node__decision-diamond");
     const topHandle = node.locator(".diagram-handle--top");
     const bottomHandle = node.locator(".diagram-handle--bottom");

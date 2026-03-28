@@ -1,13 +1,14 @@
 import type { ExportFormat } from "./export";
 
-export function defaultFilenameFor(format: ExportFormat): string {
+export function defaultFilenameFor(format: ExportFormat, title: string): string {
+  const stem = sanitizeFilenameStem(title);
   if (format === "editor-json") {
-    return "diagram.mermaid-visualizer.json";
+    return `${stem}.mermaid-visualizer.json`;
   }
   if (format === "drawio-xml") {
-    return "diagram.drawio.xml";
+    return `${stem}.drawio.xml`;
   }
-  return "diagram.md";
+  return `${stem}.md`;
 }
 
 export function downloadTextFile(filename: string, text: string, type: string) {
@@ -18,4 +19,10 @@ export function downloadTextFile(filename: string, text: string, type: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function sanitizeFilenameStem(title: string): string {
+  const collapsed = title.trim().replace(/\s+/g, "-");
+  const sanitized = collapsed.replace(/[\\/:*?"<>|]/g, "");
+  return sanitized || "untitled-diagram";
 }

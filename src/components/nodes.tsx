@@ -21,6 +21,7 @@ interface FlowNodeData {
 }
 
 interface GroupNodeData {
+  groupId: string;
   title: string;
   groupType: "subgraph" | "swimlane";
   collapsed?: boolean;
@@ -143,7 +144,7 @@ export function FlowNode({ data, selected }: NodeProps) {
   );
 }
 
-export function GroupNode({ id, data, selected }: NodeProps) {
+export function GroupNode({ data, selected }: NodeProps) {
   const typed = data as unknown as GroupNodeData;
   const className = `diagram-group ${typed.groupType === "swimlane" ? "diagram-group--lane" : "diagram-group--subgraph"}${selected ? " is-selected" : ""}`;
 
@@ -155,7 +156,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
         minHeight={140}
         lineClassName="diagram-group__resizer-line"
         handleClassName="diagram-group__resizer-handle"
-        onResizeEnd={(_event, params) => typed.onResizeEnd?.(id, params.width, params.height)}
+        onResizeEnd={(_event, params) => typed.onResizeEnd?.(typed.groupId, params.width, params.height)}
       />
       <div className="diagram-group__header">
         <span>{typed.title}</span>
@@ -167,7 +168,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
           onMouseDown={stopEvent}
           onClick={(event) => {
             stopEvent(event);
-            typed.onToggleCollapse?.(id);
+            typed.onToggleCollapse?.(typed.groupId);
           }}
         >
           {typed.collapsed ? "展开" : "折叠"}

@@ -182,4 +182,149 @@ describe("FlowNode", () => {
     expect(nodeSurface.style.borderRadius).toBe("999px");
     expect(nodeSurface.style.aspectRatio).toBe("");
   });
+
+  it("does not render an extra hover shell around quick connect affordances", () => {
+    render(
+      <ReactFlowProvider>
+        <FlowNode
+          {...({
+            id: "N1",
+            data: {
+              nodeId: "N1",
+              label: "处理步骤",
+              type: "process",
+              geometry: "rect",
+              quickConnectEnabled: true,
+              paint: {
+                fill: "#ffffff",
+                stroke: "#344054",
+                color: "#111827",
+                strokeWidth: 2,
+                borderRadius: 10,
+              },
+            },
+            selected: false,
+            dragging: false,
+            zIndex: 1,
+            isConnectable: true,
+            positionAbsoluteX: 0,
+            positionAbsoluteY: 0,
+          } as any)}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(document.querySelector(".diagram-node__hover-shell")).toBeNull();
+  });
+
+  it("renders an expanded interaction zone sized from the quick-connect extrema", () => {
+    render(
+      <ReactFlowProvider>
+        <FlowNode
+          {...({
+            id: "N8",
+            data: {
+              nodeId: "N8",
+              label: "处理步骤",
+              type: "process",
+              quickConnectEnabled: true,
+              paint: {
+                fill: "#ffffff",
+                stroke: "#344054",
+                color: "#111827",
+                strokeWidth: 2,
+                borderRadius: 10,
+              },
+            },
+            selected: false,
+            dragging: false,
+            zIndex: 1,
+            isConnectable: true,
+            positionAbsoluteX: 0,
+            positionAbsoluteY: 0,
+          } as any)}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const host = screen.getByText("处理步骤").closest(".diagram-node-host") as HTMLElement;
+    const surface = screen.getByText("处理步骤").closest(".diagram-node") as HTMLElement;
+    const interactionZone = host.querySelector(".diagram-node__interaction-zone") as HTMLElement;
+
+    expect(host.dataset.interactionActive).toBe("false");
+    expect(surface).not.toBeNull();
+    expect(interactionZone).not.toBeNull();
+    expect(host.style.getPropertyValue("--diagram-node-interaction-outset")).toBe("54px");
+  });
+
+  it("keeps decision nodes free of extra geometry metadata on the shared node root", () => {
+    render(
+      <ReactFlowProvider>
+        <FlowNode
+          {...({
+            id: "N3",
+            data: {
+              nodeId: "N3",
+              label: "审批通过?",
+              type: "decision",
+              geometry: "diamond",
+              quickConnectEnabled: true,
+              paint: {
+                fill: "#ffffff",
+                stroke: "#344054",
+                color: "#111827",
+                strokeWidth: 2,
+                borderRadius: 10,
+              },
+            },
+            selected: false,
+            dragging: false,
+            zIndex: 1,
+            isConnectable: true,
+            positionAbsoluteX: 0,
+            positionAbsoluteY: 0,
+          } as any)}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const nodeSurface = screen.getByText("审批通过?").closest(".diagram-node") as HTMLElement;
+    expect(nodeSurface.dataset.geometry).toBeUndefined();
+  });
+
+  it("renders decision nodes with an inner diamond surface instead of clipping the shared host", () => {
+    render(
+      <ReactFlowProvider>
+        <FlowNode
+          {...({
+            id: "N9",
+            data: {
+              nodeId: "N9",
+              label: "审批通过?",
+              type: "decision",
+              quickConnectEnabled: true,
+              paint: {
+                fill: "#ffffff",
+                stroke: "#344054",
+                color: "#111827",
+                strokeWidth: 2,
+                borderRadius: 10,
+              },
+            },
+            selected: false,
+            dragging: false,
+            zIndex: 1,
+            isConnectable: true,
+            positionAbsoluteX: 0,
+            positionAbsoluteY: 0,
+          } as any)}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const host = screen.getByText("审批通过?").closest(".diagram-node-host") as HTMLElement;
+    expect(host).not.toBeNull();
+    expect(host.className).toContain("diagram-node-host--decision");
+    expect(host.querySelector(".diagram-node__decision-diamond")).not.toBeNull();
+  });
 });

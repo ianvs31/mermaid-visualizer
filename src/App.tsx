@@ -56,6 +56,7 @@ import type {
 import { CanvasToolbar } from "./components/CanvasToolbar";
 import { ContextToolbar } from "./components/ContextToolbar";
 import { EdgeContextToolbar } from "./components/EdgeContextToolbar";
+import { FlowEdge } from "./components/FlowEdge";
 import { InlineTextOverlay, type InlineArmedTarget, type InlineOverlayRect } from "./components/InlineTextOverlay";
 import { FlowNode, GroupNode } from "./components/nodes";
 import { PaletteDragPreview } from "./components/PaletteDragPreview";
@@ -68,6 +69,10 @@ import "./styles/app.css";
 const NODE_TYPES = {
   flowNode: FlowNode,
   groupNode: GroupNode,
+};
+
+const EDGE_TYPES = {
+  flowEdge: FlowEdge,
 };
 
 const EMPTY_GUIDES: AlignmentGuides = { vertical: [], horizontal: [] };
@@ -1401,6 +1406,7 @@ function EditorApp() {
           nodes={elements.nodes}
           edges={elements.edges}
           nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           minZoom={0.25}
           maxZoom={3}
           zoomOnScroll

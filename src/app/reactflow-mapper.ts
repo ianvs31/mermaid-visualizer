@@ -66,6 +66,7 @@ export function modelToFlowElements(model: DiagramModel, options: FlowMapOptions
       selected: selectedGroupIds.has(group.id),
       style: {
         zIndex: 1,
+        pointerEvents: "none",
       },
       className: group.type === "swimlane" ? "rf-group rf-group--lane" : "rf-group rf-group--subgraph",
       hidden,
@@ -175,14 +176,16 @@ function edgeToFlow(edge: DiagramEdge, hidden: boolean, selected: boolean): Edge
     source: edge.from,
     target: edge.to,
     label: edge.label,
-    type: "smoothstep",
+    type: "flowEdge",
     sourceHandle: edge.sourceHandle ?? "right",
     targetHandle: edge.targetHandle ?? "left",
     animated: false,
     className: "rf-edge",
     data: {
       hiddenByCollapsedGroup: hidden,
+      showEndpointHints: selected,
     },
+    interactionWidth: 28,
     style: {
       strokeWidth: 2,
       strokeDasharray: edge.strokePattern === "dashed" ? "6 4" : undefined,

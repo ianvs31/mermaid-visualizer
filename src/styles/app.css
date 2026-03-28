@@ -920,7 +920,26 @@ button.full {
   padding: 7px 10px;
 }
 
+.diagram-node-host {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.diagram-node__interaction-zone {
+  position: absolute;
+  top: calc(-1 * var(--diagram-node-interaction-outset, 54px));
+  right: calc(-1 * var(--diagram-node-interaction-outset, 54px));
+  bottom: calc(-1 * var(--diagram-node-interaction-outset, 54px));
+  left: calc(-1 * var(--diagram-node-interaction-outset, 54px));
+  z-index: 0;
+  pointer-events: none;
+}
+
 .diagram-node {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   border: var(--diagram-node-stroke-width, 2px) var(--diagram-node-stroke-style, solid) var(--diagram-node-stroke, #2b3445);
@@ -941,11 +960,11 @@ button.full {
   pointer-events: none;
 }
 
-.diagram-node.is-selected {
+.diagram-node-host.is-selected .diagram-node {
   box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.2);
 }
 
-.diagram-node.is-connect-candidate {
+.diagram-node-host.is-connect-candidate .diagram-node {
   border-color: #7c3aed;
   box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.16);
 }
@@ -961,12 +980,35 @@ button.full {
 }
 
 .diagram-node--decision {
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-  border-radius: 0;
-  padding: 16px;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  padding: 0;
+}
+
+.diagram-node__decision-diamond {
+  width: var(--diagram-node-decision-square-size, 93.34px);
+  height: var(--diagram-node-decision-square-size, 93.34px);
+  border: var(--diagram-node-stroke-width, 2px) var(--diagram-node-stroke-style, solid) var(--diagram-node-stroke, #2b3445);
+  background: var(--diagram-node-fill, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(45deg);
+}
+
+.diagram-node__decision-diamond .diagram-node__label {
+  width: 74%;
+  transform: rotate(-45deg);
+}
+
+.diagram-node-host.is-connect-candidate .diagram-node__decision-diamond {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.16);
 }
 
 .diagram-handle {
+  z-index: 2;
   width: 12px;
   height: 12px;
   border: 2px solid #fff;
@@ -977,19 +1019,17 @@ button.full {
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-.diagram-node:hover .diagram-handle,
-.diagram-node.is-selected .diagram-handle {
+.diagram-node-host[data-interaction-active="true"] .diagram-handle {
   opacity: 1;
   transform: scale(1);
 }
 
-.diagram-node[data-quick-connect-enabled="false"] .diagram-handle {
+.diagram-node-host[data-quick-connect-enabled="false"] .diagram-handle {
   opacity: 0;
   transform: scale(0.65);
 }
 
-.diagram-node[data-quick-connect-enabled="false"]:hover .diagram-handle,
-.diagram-node[data-quick-connect-enabled="false"].is-selected .diagram-handle {
+.diagram-node-host[data-quick-connect-enabled="false"][data-interaction-active="true"] .diagram-handle {
   opacity: 0;
   transform: scale(0.65);
 }
@@ -1001,6 +1041,7 @@ button.full {
   border: 2px dashed #81a1d2;
   background: rgba(219, 234, 254, 0.2);
   padding: 10px;
+  pointer-events: none;
 }
 
 .diagram-group--lane {
@@ -1084,6 +1125,20 @@ button.full {
   z-index: 1 !important;
 }
 
+.react-flow__node.rf-group {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.react-flow__node.rf-group .diagram-group__header,
+.react-flow__node.rf-group .diagram-group__header *,
+.react-flow__node.rf-group .diagram-group__collapsed,
+.react-flow__node.rf-group .react-flow__resize-control {
+  pointer-events: auto;
+}
+
 .rf-node {
   z-index: 4 !important;
 }
@@ -1096,6 +1151,12 @@ button.full {
 .react-flow__edge.selected path {
   stroke: #7c3aed;
   stroke-width: 3;
+}
+
+.flow-edge__endpoint {
+  fill: #7c3aed;
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 2;
 }
 
 .react-flow__edge-textwrapper {
@@ -1116,8 +1177,9 @@ button.full {
 
 .diagram-quick-connect {
   position: absolute;
-  width: 36px;
-  height: 36px;
+  width: var(--diagram-node-quick-connect-size, 36px);
+  height: var(--diagram-node-quick-connect-size, 36px);
+  z-index: 3;
   border: 2px solid color-mix(in srgb, var(--diagram-node-stroke, #3b82f6) 18%, #dbeafe);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.98);
@@ -1132,8 +1194,7 @@ button.full {
   transition: opacity 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
 }
 
-.diagram-node[data-quick-connect-enabled="true"]:hover .diagram-quick-connect,
-.diagram-node[data-quick-connect-enabled="true"].is-selected .diagram-quick-connect {
+.diagram-node-host[data-quick-connect-enabled="true"][data-interaction-active="true"] .diagram-quick-connect {
   opacity: 1;
   transform: scale(1);
   pointer-events: auto;
@@ -1145,45 +1206,41 @@ button.full {
 
 .diagram-quick-connect--top {
   left: 50%;
-  top: -18px;
+  top: calc(-1 * var(--diagram-node-quick-connect-offset, 18px));
   transform: translate(-50%, -100%) scale(0.82);
 }
 
-.diagram-node[data-quick-connect-enabled="true"]:hover .diagram-quick-connect--top,
-.diagram-node[data-quick-connect-enabled="true"].is-selected .diagram-quick-connect--top {
+.diagram-node-host[data-quick-connect-enabled="true"][data-interaction-active="true"] .diagram-quick-connect--top {
   transform: translate(-50%, -100%) scale(1);
 }
 
 .diagram-quick-connect--right {
-  right: -18px;
+  right: calc(-1 * var(--diagram-node-quick-connect-offset, 18px));
   top: 50%;
   transform: translate(100%, -50%) scale(0.82);
 }
 
-.diagram-node[data-quick-connect-enabled="true"]:hover .diagram-quick-connect--right,
-.diagram-node[data-quick-connect-enabled="true"].is-selected .diagram-quick-connect--right {
+.diagram-node-host[data-quick-connect-enabled="true"][data-interaction-active="true"] .diagram-quick-connect--right {
   transform: translate(100%, -50%) scale(1);
 }
 
 .diagram-quick-connect--bottom {
   left: 50%;
-  bottom: -18px;
+  bottom: calc(-1 * var(--diagram-node-quick-connect-offset, 18px));
   transform: translate(-50%, 100%) scale(0.82);
 }
 
-.diagram-node[data-quick-connect-enabled="true"]:hover .diagram-quick-connect--bottom,
-.diagram-node[data-quick-connect-enabled="true"].is-selected .diagram-quick-connect--bottom {
+.diagram-node-host[data-quick-connect-enabled="true"][data-interaction-active="true"] .diagram-quick-connect--bottom {
   transform: translate(-50%, 100%) scale(1);
 }
 
 .diagram-quick-connect--left {
-  left: -18px;
+  left: calc(-1 * var(--diagram-node-quick-connect-offset, 18px));
   top: 50%;
   transform: translate(-100%, -50%) scale(0.82);
 }
 
-.diagram-node[data-quick-connect-enabled="true"]:hover .diagram-quick-connect--left,
-.diagram-node[data-quick-connect-enabled="true"].is-selected .diagram-quick-connect--left {
+.diagram-node-host[data-quick-connect-enabled="true"][data-interaction-active="true"] .diagram-quick-connect--left {
   transform: translate(-100%, -50%) scale(1);
 }
 
@@ -1300,7 +1357,7 @@ button.full {
   margin: 0;
 }
 
-.diagram-node {
+.diagram-node-host {
   position: relative;
   overflow: visible;
 }

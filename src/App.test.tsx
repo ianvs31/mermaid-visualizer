@@ -161,6 +161,11 @@ describe("App", () => {
     const { container } = render(<App />);
     await screen.findAllByText("开始", {}, { timeout: 12000 });
 
+    act(() => {
+      localStorage.clear();
+      useEditorStore.getState().loadSample();
+    });
+
     const targetNode = await waitFor(() => {
       const element = container.querySelector('.react-flow__node[data-id="N1"]');
       expect(element).not.toBeNull();
@@ -312,6 +317,21 @@ describe("App", () => {
       expect(useEditorStore.getState().model.edges.find((edge) => edge.id === "E1")?.strokePattern).toBe("dashed");
       expect(useEditorStore.getState().code).toContain("N1 -.-> N2");
     });
+  }, 15000);
+
+  it("opens the edge label editor on direct edge double click", async () => {
+    const { container } = render(<App />);
+    await screen.findAllByText("开始", {}, { timeout: 12000 });
+
+    const edge = await waitFor(() => {
+      const element = container.querySelector('.react-flow__edge[data-id="E1"]');
+      expect(element).not.toBeNull();
+      return element as Element;
+    });
+
+    fireEvent.doubleClick(edge);
+
+    expect(await screen.findByPlaceholderText("连线标签")).toBeInTheDocument();
   }, 15000);
 
   it("hides swimlane descendants again after collapse, expand, then collapse", async () => {

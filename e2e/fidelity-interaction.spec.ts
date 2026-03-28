@@ -36,4 +36,20 @@ test.describe("mermaid fidelity interactions", () => {
     await expect(page.locator('.react-flow__node[data-id="N1"]')).toHaveCount(0);
     await expect(page.locator('.react-flow__edge[data-id="E1"]')).toHaveCount(0);
   });
+
+  test("selects an edge through its visible path and opens label editing on double click", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+
+    const edgeInteraction = page.locator('.react-flow__edge[data-id="E1"] .react-flow__edge-interaction');
+    await expect(edgeInteraction).toHaveCount(1);
+
+    await edgeInteraction.click();
+    await expect(page.getByRole("button", { name: "编辑标签" })).toBeVisible();
+    await expect(page.locator(".flow-edge__endpoint")).toHaveCount(2);
+
+    await edgeInteraction.dblclick();
+    await expect(page.getByPlaceholder("连线标签")).toBeVisible();
+  });
 });
